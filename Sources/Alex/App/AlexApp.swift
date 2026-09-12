@@ -7,9 +7,9 @@ struct AlexApp: App {
 
     var body: some Scene {
         WindowGroup("Alex") {
-            MainWindowView()
+            MainWindowView(vault: vault)
                 .environmentObject(vault)
-                .frame(minWidth: 760, minHeight: 500)
+                .frame(minWidth: 900, minHeight: 560)
         }
         .commands {
             CommandGroup(after: .newItem) {

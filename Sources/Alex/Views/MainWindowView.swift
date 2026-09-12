@@ -2,20 +2,62 @@ import SwiftUI
 
 struct MainWindowView: View {
     @EnvironmentObject private var vault: Vault
+    @StateObject private var store: CanvasStore
     /// `--select <vault path>` preselects a file at launch, for snapshots.
-    @State private var selection: String? = Launch.value(after: "--select")
+    @State private var sidebarSelection: String? = Launch.value(after: "--select")
+    @State private var showInspector = Launch.value(after: "--select") != nil
+    @State private var columns: NavigationSplitViewVisibility = .all
+
+    init(vault: Vault) {
+        _store = StateObject(wrappedValue: CanvasStore(vault: vault))
+    }
 
     var body: some View {
         if vault.root == nil {
             WelcomeView()
         } else {
-            NavigationSplitView {
-                SidebarView(selection: $selection)
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 400)
+            NavigationSplitView(columnVisibility: $columns) {
+                SidebarView(selection: $sidebarSelection)
+                    .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)
             } detail: {
-                DetailView(path: selection)
+                CanvasView(store: store)
+                    .inspector(isPresented: $showInspector) {
+                        InspectorView(store: store)
+                            .inspectorColumnWidth(min: 320, ideal: 460, max: 900)
+                    }
+                    .toolbar {
+                        ToolbarItemGroup(placement: .navigation) {
+                            Button {
+                                store.goUp()
+                            } label: {
+                                Label("Back", systemImage: "chevron.left")
+                            }
+                            .keyboardShortcut("[", modifiers: .command)
+                            .disabled(store.directory.isEmpty)
+                            .help("Up one folder")
+                        }
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            Button {
+                                showInspector.toggle()
+                            } label: {
+                                Label("Inspector", systemImage: "sidebar.trailing")
+                            }
+                            .keyboardShortcut("i", modifiers: [.command, .option])
+                            .help("Show or hide the panel")
+                        }
+                    }
             }
-            .navigationTitle(vault.name)
+            .environmentObject(store)
+            .navigationTitle(store.title)
+            .onChange(of: sidebarSelection) { _, path in
+                if let path { store.reveal(path) }
+            }
+            .onChange(of: store.selection) { _, selection in
+                if !selection.isEmpty { showInspector = true }
+            }
+            .task {
+                if let path = sidebarSelection { store.reveal(path) }
+            }
         }
     }
 }
@@ -40,6 +82,7 @@ struct WelcomeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Ink.ground)
     }
 }
 

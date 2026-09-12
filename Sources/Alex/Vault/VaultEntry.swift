@@ -60,12 +60,20 @@ enum VaultListing {
         name.hasPrefix(".") || name == "node_modules" || name == "__pycache__"
     }
 
+    /// A directory's own canvas, `<dir>/<dirname>.canvas` (the vault's is
+    /// `<vaultname>.canvas`): the map of the directory, not a thing in it.
+    static func ownCanvasName(of directory: String, root: URL) -> String {
+        (directory.isEmpty ? root.lastPathComponent : VaultPath.name(of: directory)) + ".canvas"
+    }
+
     /// One directory level: directories first, then names case-insensitively.
+    /// The directory's own canvas file is left out.
     static func entries(in directory: String, root: URL) throws -> [VaultEntry] {
         let url = try VaultPath.resolve(directory, in: root)
         let names = try FileManager.default.contentsOfDirectory(atPath: url.path)
+        let own = ownCanvasName(of: directory, root: root)
         var out: [VaultEntry] = []
-        for name in names where !isHidden(name) {
+        for name in names where !isHidden(name) && name != own {
             var isDirectory: ObjCBool = false
             let child = url.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: child.path, isDirectory: &isDirectory) else {

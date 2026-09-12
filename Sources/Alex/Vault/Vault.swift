@@ -100,11 +100,29 @@ final class Vault: ObservableObject {
     }
 
     /// Atomic: Foundation writes a temporary file beside the target and renames
-    /// it into place, so a reader never sees a half-written file.
-    func write(_ text: String, to path: String) throws {
+    /// it into place, so a reader never sees a half-written file. Parent
+    /// directories are created, so the door can write `artifacts/C3.1/x.png`
+    /// before anyone has made `C3.1`.
+    func write(_ data: Data, to path: String) throws {
         guard let root else { throw VaultError.noVault }
         let url = try VaultPath.resolve(path, in: root)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
         recentWrites[url.resolvingSymlinksInPath().path] = Date()
-        try Data(text.utf8).write(to: url, options: .atomic)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func write(_ text: String, to path: String) throws {
+        try write(Data(text.utf8), to: path)
+    }
+
+    func exists(_ path: String) -> Bool {
+        guard let url = url(for: path) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    func modificationDate(_ path: String) -> Date? {
+        guard let url = url(for: path) else { return nil }
+        return (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 }

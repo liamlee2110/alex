@@ -315,7 +315,7 @@ compile it.
 | # | Milestone | Liam sees | Est. |
 |---|---|---|---|
 | M0 | Scaffold | **Done 2026-09-13.** Package, `build.sh`, `run-tests.sh` with the design-law lint, window opens, picks `~/workspace/learn`, sidebar lists it and reloads on outside changes, plain preview of the selected file, `--snapshot` renders the window to a PNG. | ½ day |
-| M1 | Read-only canvas | Home with folders and cards on a pan/zoom viewport; open `competencies/`; click C0.1 and read it rendered; edit `queue.md` in Claude and watch the card update. Viewport approach measured and settled. | 2 days |
+| M1 | Read-only canvas | **Done 2026-09-13.** Home with folders and cards on a pan/zoom viewport; open `competencies/`; click C0.1 and read it rendered in the ported editor; a card re-renders when its file changes outside the app. The `NSEvent` monitor viewport works; the folder cover is a flat translucent stock rather than a `Material`, which does not sample through a 3D rotation. The editor already saves, so most of M2's panel work landed here. | 2 days |
 | M2 | Editing | Move, resize, marquee, groups, edges, sticky notes, Markdown edit in the panel, tray, undo; `competencies.canvas` committed as the roadmap map. | 2½ days |
 | M3 | The door | Door on; `.mcp.json` in the vault; from Claude Code: "plot a P step response, save it under artifacts/C3.1 and show me" ends with the app panning to the new plot. | 1 day |
 | M4 | Progress layer | Colour by `status`, badges, prerequisite edges from frontmatter, ⌘K, dashboard card, `canvas.config.json`, maths rendering decision (§9). | 1 day |
