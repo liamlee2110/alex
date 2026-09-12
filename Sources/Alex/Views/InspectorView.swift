@@ -35,6 +35,9 @@ struct EmptyInspector: View {
                     .font(Typography.label)
                     .foregroundStyle(Ink.faint)
                     .padding(.top, Space.s)
+                Text("Drag one onto the desk, or place it beside the selection.")
+                    .font(Typography.meta)
+                    .foregroundStyle(Ink.faint)
                 ForEach(store.unplaced) { entry in
                     HStack {
                         Label(entry.name, systemImage: entry.kind.symbol)
@@ -44,6 +47,8 @@ struct EmptyInspector: View {
                         Button("Place") { store.place(entry.path) }
                             .font(Typography.control)
                     }
+                    .contentShape(Rectangle())
+                    .draggable(store.vault.url(for: entry.path) ?? URL(fileURLWithPath: "/"))
                 }
             }
             Spacer()

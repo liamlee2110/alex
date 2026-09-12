@@ -12,7 +12,9 @@ struct AlexApp: App {
                 .frame(minWidth: 900, minHeight: 560)
         }
         .commands {
+            CanvasCommands()
             CommandGroup(after: .newItem) {
+                Divider()
                 Button("Open vault…") { VaultPicker.choose(into: vault) }
                     .keyboardShortcut("o", modifiers: .command)
             }

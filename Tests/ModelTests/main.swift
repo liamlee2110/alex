@@ -1,5 +1,8 @@
 import Foundation
 
+// Line-buffered, so a trap mid-suite still shows every line before it.
+setvbuf(stdout, nil, _IOLBF, 0)
+
 var failures = 0
 func check(_ ok: Bool, _ label: String, _ detail: String = "") {
     if ok { print("  ok    \(label)") }

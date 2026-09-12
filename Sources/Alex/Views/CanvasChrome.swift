@@ -35,18 +35,12 @@ struct BreadcrumbBar: View {
 
 struct ZoomControls: View {
     @ObservedObject var store: CanvasStore
-    let size: CGSize
-
-    private var centre: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
 
     var body: some View {
         HStack(spacing: 2) {
-            control("minus", "Zoom out") { store.viewport.zoom(by: 1 / 1.2, around: centre) }
-                .keyboardShortcut("-", modifiers: .command)
+            control("minus", "Zoom out") { store.zoomOut() }
             Button {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    store.viewport = Viewport.fitting(store.document.bounds, in: size)
-                }
+                withAnimation(.easeOut(duration: 0.3)) { store.fit() }
             } label: {
                 Text("\(Int((store.viewport.scale * 100).rounded()))%")
                     .font(Typography.label)
@@ -54,16 +48,9 @@ struct ZoomControls: View {
                     .frame(minWidth: 44)
             }
             .buttonStyle(.plain)
-            .help("Fit everything")
-            .keyboardShortcut("1", modifiers: .command)
-            control("plus", "Zoom in") { store.viewport.zoom(by: 1.2, around: centre) }
-                .keyboardShortcut("=", modifiers: .command)
-            control("1.circle", "Actual size") {
-                var vp = store.viewport
-                vp.zoom(by: 1 / vp.scale, around: centre)
-                store.viewport = vp
-            }
-            .keyboardShortcut("0", modifiers: .command)
+            .help("Fit to contents")
+            control("plus", "Zoom in") { store.zoomIn() }
+            control("1.circle", "Actual size") { store.actualSize() }
         }
         .padding(Space.xs)
         .background(Capsule().fill(Ink.float))

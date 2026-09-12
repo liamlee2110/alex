@@ -108,8 +108,22 @@ final class Vault: ObservableObject {
         let url = try VaultPath.resolve(path, in: root)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
+        let isNew = !FileManager.default.fileExists(atPath: url.path)
         recentWrites[url.resolvingSymlinksInPath().path] = Date()
         try data.write(to: url, options: .atomic)
+        // Our own writes are hidden from the watcher, so a new file has to
+        // reach the tree by hand.
+        if isNew { reload() }
+    }
+
+    /// The vault-relative path of an absolute URL, or nil if it is outside.
+    func relativePath(of url: URL) -> String? {
+        guard let root else { return nil }
+        let rootPath = root.resolvingSymlinksInPath().path
+        let path = url.resolvingSymlinksInPath().path
+        if path == rootPath { return "" }
+        guard path.hasPrefix(rootPath + "/") else { return nil }
+        return String(path.dropFirst(rootPath.count + 1))
     }
 
     func write(_ text: String, to path: String) throws {

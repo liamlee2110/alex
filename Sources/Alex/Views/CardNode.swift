@@ -129,24 +129,61 @@ struct CardNodeView: View {
     }
 }
 
-/// A `text` node: a sticky note cut from the stock its colour names.
+/// A `text` node: a sticky note cut from the stock its colour names. Double-
+/// click and it edits in place; the text is saved a moment after typing
+/// stops and when editing ends.
 struct StickyNodeView: View {
     let node: CanvasNode
     let selected: Bool
+    var editing = false
+    var onChange: (String) -> Void = { _ in }
+
+    @State private var text = ""
+    @State private var saveTask: Task<Void, Never>?
+    @FocusState private var focused: Bool
 
     private var hue: Double { node.hue ?? Stock.hue(forCanvasColor: node.color) ?? 95 }
+    private var ink: Color { OKLCH.color(l: 0.25, c: 0.03, h: hue) }
 
     var body: some View {
-        Text(node.text ?? "")
-            .font(Typography.body)
-            .foregroundStyle(OKLCH.color(l: 0.25, c: 0.03, h: hue))
-            .padding(Space.l)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(OKLCH.color(l: 0.93, c: 0.07, h: hue))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.control))
-            .overlay(RoundedRectangle(cornerRadius: Radius.control)
-                .strokeBorder(selected ? Accent.text : OKLCH.color(l: 0.8, c: 0.06, h: hue), lineWidth: selected ? 2 : 1))
-            .elevation(.card)
+        Group {
+            if editing {
+                TextEditor(text: $text)
+                    .font(Typography.body)
+                    .foregroundStyle(ink)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
+                    .focused($focused)
+                    .padding(Space.m)
+                    .onAppear {
+                        text = node.text ?? ""
+                        focused = true
+                    }
+                    .onChange(of: text) { _, new in
+                        saveTask?.cancel()
+                        saveTask = Task {
+                            try? await Task.sleep(for: .milliseconds(500))
+                            guard !Task.isCancelled else { return }
+                            onChange(new)
+                        }
+                    }
+                    .onDisappear {
+                        saveTask?.cancel()
+                        onChange(text)
+                    }
+            } else {
+                Text(node.text?.isEmpty == false ? node.text! : "Double-click to write")
+                    .font(Typography.body)
+                    .foregroundStyle(node.text?.isEmpty == false ? ink : OKLCH.color(l: 0.55, c: 0.03, h: hue))
+                    .padding(Space.l)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(OKLCH.color(l: 0.93, c: 0.07, h: hue))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.control))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control)
+            .strokeBorder(selected ? Accent.text : OKLCH.color(l: 0.8, c: 0.06, h: hue), lineWidth: selected ? 2 : 1))
+        .elevation(.card)
     }
 }
 

@@ -43,12 +43,20 @@ run "Design law" design_law
 
 # Pure Foundation files only: nothing here may import SwiftUI or AppKit.
 MODELS=(Sources/Alex/Vault/VaultPath.swift Sources/Alex/Vault/VaultEntry.swift)
+# The canvas suite adds the stores: Foundation, Combine and CoreServices, still no AppKit.
+CANVAS=("${MODELS[@]}" Sources/Alex/Vault/Vault.swift Sources/Alex/Vault/VaultWatcher.swift
+        Sources/Alex/Canvas/JSONValue.swift Sources/Alex/Canvas/CanvasFile.swift
+        Sources/Alex/Canvas/Frontmatter.swift Sources/Alex/Canvas/Layout.swift
+        Sources/Alex/Canvas/Viewport.swift Sources/Alex/Canvas/CardPreview.swift
+        Sources/Alex/Canvas/CanvasStore.swift Sources/Alex/App/Launch.swift)
 
 echo ""
 echo "==> Compiling suites"
 swiftc -O -o "$SCRATCH/model" "${MODELS[@]}" Tests/ModelTests/main.swift || exit 1
+swiftc -O -o "$SCRATCH/canvas" "${CANVAS[@]}" Tests/CanvasTests/main.swift || exit 1
 
 run "Model logic" "$SCRATCH/model"
+run "Canvas store" "$SCRATCH/canvas"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then echo "✓ All suites passed"; else echo "✗ Failures above"; fi

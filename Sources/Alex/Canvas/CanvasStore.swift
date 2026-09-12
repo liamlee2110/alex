@@ -214,6 +214,8 @@ final class CanvasStore: ObservableObject {
         if let node = node(forFile: path) {
             select(node.id)
             focusRequest = node.id
+            // Panning to the card is the point; a fit would zoom it away.
+            wantsFit = false
         }
     }
 
@@ -251,68 +253,232 @@ final class CanvasStore: ObservableObject {
         node.kind == .file && node.file.map(vault.isDirectory) == true
     }
 
-    // MARK: - Mutations (every one saves)
+    // MARK: - Mutations (every one saves, every one undoes)
+
+    /// The window's undo manager, handed in by the canvas view.
+    weak var undoManager: UndoManager?
+    /// The canvas view's size, so "zoom in" and "new sticky" from a menu
+    /// know where the middle is.
+    var viewSize = CGSize.zero
+
+    private func mutate(_ name: String, _ body: (inout CanvasDocument) -> Void) {
+        let before = document
+        body(&document)
+        save()
+        refreshUnplaced()
+        registerUndo(name, before: before)
+    }
+
+    private func registerUndo(_ name: String, before: CanvasDocument) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: self) { store in
+            let current = store.document
+            store.document = before
+            store.save()
+            store.refreshUnplaced()
+            store.selection = store.selection.filter { id in before.nodes.contains { $0.id == id } }
+            store.registerUndo(name, before: current)
+        }
+        undoManager.setActionName(name)
+    }
 
     func setFrame(_ id: String, _ frame: CGRect) {
-        guard var node = document.node(id) else { return }
-        node.frame = frame
-        document.update(node)
-        save()
+        mutate("Resize") { doc in
+            guard var node = doc.node(id) else { return }
+            node.frame = frame
+            doc.update(node)
+        }
     }
 
     func move(_ ids: Set<String>, by delta: CGSize) {
-        for id in ids {
-            guard var node = document.node(id) else { continue }
-            node.x += delta.width
-            node.y += delta.height
-            document.update(node)
+        mutate("Move") { doc in
+            for id in ids {
+                guard var node = doc.node(id) else { continue }
+                node.x += delta.width
+                node.y += delta.height
+                doc.update(node)
+            }
         }
-        save()
     }
 
     @discardableResult
-    func add(_ node: CanvasNode) -> CanvasNode {
-        document.nodes.append(node)
-        save()
-        refreshUnplaced()
+    func add(_ node: CanvasNode, name: String = "Add") -> CanvasNode {
+        mutate(name) { doc in
+            if node.kind == .group { doc.nodes.insert(node, at: 0) } else { doc.nodes.append(node) }
+        }
         return node
     }
 
-    func update(_ node: CanvasNode) {
-        document.update(node)
-        save()
+    func update(_ node: CanvasNode, name: String = "Edit") {
+        mutate(name) { $0.update(node) }
     }
 
+    func setText(_ id: String, _ text: String) {
+        guard var node = document.node(id), node.text != text else { return }
+        node.text = text
+        update(node, name: "Edit note")
+    }
+
+    /// Off the canvas, not off the disk: the file stays and goes back to
+    /// the unplaced tray.
     func remove(_ ids: Set<String>) {
-        document.nodes.removeAll { ids.contains($0.id) }
-        document.edges.removeAll { ids.contains($0.fromNode) || ids.contains($0.toNode) }
+        guard !ids.isEmpty else { return }
+        mutate("Remove") { doc in
+            doc.nodes.removeAll { ids.contains($0.id) }
+            doc.edges.removeAll { ids.contains($0.fromNode) || ids.contains($0.toNode) }
+        }
         selection.subtract(ids)
-        save()
-        refreshUnplaced()
     }
 
     @discardableResult
-    func connect(_ from: String, _ to: String, label: String? = nil) -> CanvasEdge {
-        let edge = CanvasEdge(from: from, to: to, label: label)
-        document.edges.append(edge)
-        save()
+    func connect(_ from: String, _ to: String, fromSide: CanvasSide? = nil,
+                 toSide: CanvasSide? = nil, label: String? = nil) -> CanvasEdge {
+        var edge = CanvasEdge(from: from, to: to, label: label)
+        edge.fromSide = fromSide
+        edge.toSide = toSide
+        mutate("Connect") { $0.edges.append(edge) }
         return edge
     }
 
     func removeEdge(_ id: String) {
-        document.edges.removeAll { $0.id == id }
-        save()
+        mutate("Remove edge") { $0.edges.removeAll { $0.id == id } }
     }
 
-    /// Place a vault file on this canvas at a free spot, or at `at`.
+    /// Place a vault file on this canvas at a point, or at a free spot
+    /// beside `near`, else beside the selection, else below everything.
     @discardableResult
     func place(_ path: String, at point: CGPoint? = nil, near: String? = nil) -> CanvasNode {
         let isDir = vault.isDirectory(path)
         let size = isDir ? Layout.folderSize : Layout.cardSize
-        let origin = point ?? Layout.freeSlot(for: size, in: document,
-                                              near: near.flatMap { document.node($0)?.frame }
-                                                  ?? selectedNode?.frame)
+        let anchor = near.flatMap { document.node($0)?.frame } ?? selectedNode?.frame
+        let origin = point ?? Layout.freeSlot(for: size, in: document, near: anchor)
         let node = CanvasNode(kind: .file, frame: CGRect(origin: origin, size: size), file: path)
-        return add(node)
+        return add(node, name: "Place")
     }
+
+    func placeAllUnplaced() {
+        let entries = unplaced
+        guard !entries.isEmpty else { return }
+        mutate("Place all") { doc in
+            var start = doc.bounds.isNull ? Layout.origin : CGPoint(x: Layout.origin.x, y: doc.bounds.maxY + 60)
+            for node in Layout.autoLayout(entries) {
+                var placed = node
+                placed.x += start.x - Layout.origin.x
+                placed.y += start.y - Layout.origin.y
+                doc.nodes.append(placed)
+            }
+            start.y += 1
+        }
+    }
+
+    /// A sticky note. Without a point it lands in the middle of the view.
+    @discardableResult
+    func addSticky(at world: CGPoint?) -> CanvasNode {
+        let size = Layout.textSize
+        let origin: CGPoint
+        if let world {
+            origin = CGPoint(x: world.x - size.width / 2, y: world.y - size.height / 2)
+        } else {
+            let centre = viewport.toWorld(CGPoint(x: viewSize.width / 2, y: viewSize.height / 2))
+            origin = Layout.freeSlot(for: size, in: document,
+                                     near: CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2,
+                                                  width: size.width, height: size.height))
+        }
+        let node = CanvasNode(kind: .text, frame: CGRect(origin: origin, size: size), text: "", color: "3")
+        add(node, name: "Add sticky note")
+        select(node.id)
+        return node
+    }
+
+    /// A new Markdown file in the open directory, placed and selected.
+    func newNote() {
+        var name = "Untitled.md"
+        var i = 2
+        while vault.exists(VaultPath.join(directory, name)) {
+            name = "Untitled \(i).md"
+            i += 1
+        }
+        let path = VaultPath.join(directory, name)
+        do {
+            try vault.write("# Untitled\n\n", to: path)
+        } catch {
+            trouble = "Couldn't create \(path): \(error)"
+            return
+        }
+        let node = place(path)
+        select(node.id)
+        focusRequest = node.id
+    }
+
+    /// A group around the selection, labelled, drawn behind it.
+    func groupSelection() {
+        let ids = selection
+        let frames = document.nodes.filter { ids.contains($0.id) }.map(\.frame)
+        guard !frames.isEmpty else { return }
+        let b = frames.reduce(CGRect.null) { $0.union($1) }
+        let frame = CGRect(x: b.minX - 30, y: b.minY - 56, width: b.width + 60, height: b.height + 86)
+        let group = CanvasNode(kind: .group, frame: frame, label: "Group")
+        add(group, name: "Group")
+        select(group.id)
+    }
+
+    /// Ids of the non-group nodes whose frames sit inside `frame`: what a
+    /// group drags along with it.
+    func nodeIDs(inside frame: CGRect) -> Set<String> {
+        Set(document.nodes.filter { $0.kind != .group && frame.contains($0.frame) }.map(\.id))
+    }
+
+    /// The topmost node under a desk point, groups last.
+    func hitTest(_ world: CGPoint, excluding: Set<String> = []) -> CanvasNode? {
+        let cards: [CanvasNode] = document.nodes.filter { $0.kind != .group }.reversed()
+        let groups: [CanvasNode] = document.nodes.filter { $0.kind == .group }.reversed()
+        return (cards + groups).first { !excluding.contains($0.id) && $0.frame.contains(world) }
+    }
+
+    /// Files dropped on the desk: a vault file is placed where it landed; a
+    /// file from elsewhere is copied into the open directory first.
+    func importFiles(_ urls: [URL], at world: CGPoint) {
+        var point = world
+        for url in urls {
+            var path: String
+            if let inside = vault.relativePath(of: url) {
+                path = inside
+            } else {
+                var name = url.lastPathComponent
+                var i = 2
+                while vault.exists(VaultPath.join(directory, name)) {
+                    let stem = (url.lastPathComponent as NSString).deletingPathExtension
+                    let ext = url.pathExtension
+                    name = ext.isEmpty ? "\(stem) \(i)" : "\(stem) \(i).\(ext)"
+                    i += 1
+                }
+                path = VaultPath.join(directory, name)
+                guard let dest = vault.url(for: path) else { continue }
+                do {
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    vault.reload()
+                } catch {
+                    trouble = "Couldn't copy \(url.lastPathComponent): \(error)"
+                    continue
+                }
+            }
+            if let existing = node(forFile: path) {
+                select(existing.id)
+            } else {
+                let node = place(path, at: point)
+                select(node.id)
+            }
+            point.x += 40
+            point.y += 40
+        }
+    }
+
+    // MARK: - Zoom from a menu
+
+    private var viewCentre: CGPoint { CGPoint(x: viewSize.width / 2, y: viewSize.height / 2) }
+
+    func zoomIn() { viewport.zoom(by: 1.2, around: viewCentre) }
+    func zoomOut() { viewport.zoom(by: 1 / 1.2, around: viewCentre) }
+    func actualSize() { viewport.zoom(by: 1 / viewport.scale, around: viewCentre) }
+    func fit() { wantsFit = true }
 }

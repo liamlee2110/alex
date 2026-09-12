@@ -32,7 +32,6 @@ struct MainWindowView: View {
                             } label: {
                                 Label("Back", systemImage: "chevron.left")
                             }
-                            .keyboardShortcut("[", modifiers: .command)
                             .disabled(store.directory.isEmpty)
                             .help("Up one folder")
                         }
@@ -48,6 +47,7 @@ struct MainWindowView: View {
                     }
             }
             .environmentObject(store)
+            .focusedSceneValue(\.canvasStore, store)
             .navigationTitle(store.title)
             .onChange(of: sidebarSelection) { _, path in
                 if let path { store.reveal(path) }
