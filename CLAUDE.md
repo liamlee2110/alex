@@ -54,6 +54,13 @@ gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
 - **The type checker gives up on a long `Canvas` closure.** Draw in a method
   with explicit types (see `EdgeLayer`).
 
+## Releasing
+
+Tag `vX.Y.Z` and push the tag. `.github/workflows/release.yml` runs the
+suites, builds, zips the app, makes a DMG and publishes a GitHub release.
+`docs/*.png` are cropped snapshots (`tools/crop-top.swift`) used by the
+README; refresh them when a surface changes.
+
 ## Before saying you're done
 
 `./run-tests.sh` passes, the release build is warning-free, you launched it,

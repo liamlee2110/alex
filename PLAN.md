@@ -3,6 +3,8 @@
 Draft for Liam's review, 2026-09-13.
 Revision 2: SwiftUI, native, macOS only (decided by Liam, 2026-09-13).
 Revision 3: named Alex; repo `liamlee2110/alex`, private until M5 (2026-09-13).
+Status: M0–M5 built and verified on 2026-09-13; v0.1.0. What each
+milestone delivered is in §7. The decisions still open are in §9.
 
 ## 0. One paragraph
 
@@ -319,11 +321,14 @@ compile it.
 | M2 | Editing | **Done 2026-09-13.** Drag to move (a group carries what it holds), corner grip to resize, marquee with ⇧ to add, ⌘G groups the selection, drag a side dot onto another card to connect, double-click the desk for a sticky that edits in place, ⌘N for a new note, the tray drags onto the desk and Finder drops copy in, every mutation one undo step. The store side is covered by a headless suite; the gestures themselves are verified by hand in dogfood. `competencies.canvas` as the roadmap map lands with M4's frontmatter groups and edges. | 2½ days |
 | M3 | The door | **Done 2026-09-13.** Donna's transport ported with the port changed; eight tools; Settings toggle with a status line, the `claude mcp add` line and a button that writes `.mcp.json` into the vault; `.mcp.json` written into the learn vault. Driven over HTTP the way Claude Code does it: `write_artifact` with a step-response PNG created `artifacts/C3.1/` and its canvas, `add_card` and `connect` put an explanation beside it, `focus` opened the canvas and panned to the plot. Origin check answers 403, GET answers 405. A headless suite covers the protocol and every tool, including the refusals. | 1 day |
 | M4 | Progress layer | **Done 2026-09-13.** `canvas.config.json` views: `colorBy` tints a card and its chip by a frontmatter value, `edgesFrom` draws dashed prerequisite edges between cards by id, `groupBy` arranges a directory into labelled groups (⌘⇧A). The learn vault's `competencies.canvas` is now the roadmap map: nine blocks, prerequisites as arrows. ⌘K finds a file by path or title and reveals its card. The panel shows a note's frontmatter as chips above the editor. The README card carries the dashboard block. Maths stays raw `$…$` until Liam decides §9. | 1 day |
-| M5 | OSS | README with screenshots, MIT licence, CONTRIBUTING, `vault-template/` (CLAUDE.md starter, `.mcp.json`, one canvas), GitHub Actions on a macOS runner building the `.app` and a `.dmg` per tag, v0.1.0. | 1 day |
+| M5 | OSS | **Done 2026-09-13.** README with cropped snapshots, MIT licence, CONTRIBUTING, `vault-template/` (README, CLAUDE.md starter, `.mcp.json`, `canvas.config.json`, one note), CI on push and a release workflow that builds, zips, makes a DMG and publishes on a `v*` tag; v0.1.0 tagged. The repo stays private until Liam flips it (§9). | 1 day |
 
-After M3 the learn repo's CLAUDE.md §4 step 10 gains one clause: "if the
-door is open, place the session's artifacts on the competency canvas and
-focus them". That is the whole coach-side change, and it is the dogfood.
+After M3 the learn repo's CLAUDE.md §4 step 10 gained one clause: if the
+door answers, write the session's artifacts through it and focus the
+newest. That is the whole coach-side change, and it is the dogfood. The
+learn vault also carries `.mcp.json`, `canvas.config.json` (status colours,
+prerequisite edges, blocks as groups), `learn.canvas` and
+`competencies/competencies.canvas`, all committed.
 
 ## 8. Risks and sharp edges, known before starting
 

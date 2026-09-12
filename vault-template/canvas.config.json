@@ -1,0 +1,18 @@
+{
+  "views": [
+    {
+      "match": "notes/*.md",
+      "colorBy": "status",
+      "colors": {
+        "idea": "3",
+        "doing": "5",
+        "done": "4",
+        "dropped": ""
+      },
+      "groupBy": "area",
+      "groupLabel": "{value}",
+      "edgesFrom": "after",
+      "idKey": "id"
+    }
+  ]
+}

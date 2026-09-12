@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Tests
+        run: ./run-tests.sh
+      - name: Build
+        run: ./build.sh
+      - name: Package
+        run: |
+          ditto -c -k --keepParent Alex.app "Alex-${GITHUB_REF_NAME}.zip"
+          hdiutil create -volname Alex -srcfolder Alex.app -ov -format UDZO "Alex-${GITHUB_REF_NAME}.dmg"
+          ls -la Alex-*
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "Alex-${GITHUB_REF_NAME}.zip" "Alex-${GITHUB_REF_NAME}.dmg" \
+            --title "Alex $GITHUB_REF_NAME" --generate-notes
