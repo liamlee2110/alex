@@ -11,14 +11,19 @@ struct CardNodeView: View {
     let url: URL?
     let missing: Bool
     let selected: Bool
+    /// From the vault's views: the key that colours this card, its value,
+    /// and the JSON Canvas colour it maps to.
+    var tint: (key: String, value: String, color: String)? = nil
 
     @ObservedObject private var thumbnails = Thumbnails.shared
     @State private var hovering = false
 
+    private var tintHue: Double? { tint.flatMap { Stock.hue(forCanvasColor: $0.color) } }
+
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Ink.card)
+            .background(tintHue.map { OKLCH.color(l: 0.975, c: 0.02, h: $0) } ?? Ink.card)
             .clipShape(RoundedRectangle(cornerRadius: Radius.card))
             .overlay(RoundedRectangle(cornerRadius: Radius.card)
                 .strokeBorder(selected ? Accent.text : Ink.hairline, lineWidth: selected ? 2 : 1))
@@ -117,12 +122,13 @@ struct CardNodeView: View {
     private var chips: some View {
         HStack(spacing: 6) {
             ForEach(preview.chips, id: \.self) { chip in
+                let coloured = tint?.key == chip.key ? tintHue : nil
                 Text(chip.value)
                     .font(Typography.micro)
-                    .foregroundStyle(Ink.muted)
+                    .foregroundStyle(coloured.map { OKLCH.color(l: 0.35, c: 0.09, h: $0) } ?? Ink.muted)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Capsule().fill(Ink.well))
+                    .background(Capsule().fill(coloured.map { OKLCH.color(l: 0.88, c: 0.09, h: $0) } ?? Ink.well))
                     .help(chip.key)
             }
         }

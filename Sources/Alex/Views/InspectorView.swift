@@ -178,8 +178,31 @@ struct FileInspector: View {
         switch kind {
         case .markdown:
             ScrollView {
-                MarkdownEditor(text: $text, imageBase: url?.deletingLastPathComponent(), imageStem: stem)
-                    .padding(Space.l)
+                VStack(alignment: .leading, spacing: 0) {
+                    let fm = Frontmatter.parse(text)
+                    if !fm.isEmpty {
+                        FlowLayout(spacing: 6) {
+                            ForEach(fm.order, id: \.self) { key in
+                                if let value = fm[key], !value.isEmpty {
+                                    HStack(spacing: 4) {
+                                        Text(key)
+                                            .foregroundStyle(Ink.faint)
+                                        Text(value.display)
+                                            .foregroundStyle(Ink.muted)
+                                    }
+                                    .font(Typography.micro)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(Ink.well))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, Space.l)
+                        .padding(.top, Space.m)
+                    }
+                    MarkdownEditor(text: $text, imageBase: url?.deletingLastPathComponent(), imageStem: stem)
+                        .padding(Space.l)
+                }
             }
         case .code, .text, .canvas:
             PlainTextEditor(text: $text, editable: editable)

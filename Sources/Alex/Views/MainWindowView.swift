@@ -23,6 +23,17 @@ struct MainWindowView: View {
                     .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)
             } detail: {
                 CanvasView(store: store)
+                    .overlay(alignment: .top) {
+                        if store.showSearch {
+                            ZStack(alignment: .top) {
+                                Color.black.opacity(0.08)
+                                    .ignoresSafeArea()
+                                    .onTapGesture { store.showSearch = false }
+                                SearchPanel(store: store)
+                                    .padding(.top, 72)
+                            }
+                        }
+                    }
                     .inspector(isPresented: $showInspector) {
                         InspectorView(store: store)
                             .inspectorColumnWidth(min: 320, ideal: 460, max: 900)
@@ -59,6 +70,12 @@ struct MainWindowView: View {
             }
             .task {
                 if let path = sidebarSelection { store.reveal(path) }
+                // `--arrange <dir>`: open a directory and lay it out by its
+                // rule, for a scripted check of canvas.config.json.
+                if let dir = Launch.value(after: "--arrange") {
+                    store.openDirectory(dir)
+                    store.arrangeByConfig()
+                }
             }
         }
     }

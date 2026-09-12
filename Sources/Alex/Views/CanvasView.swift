@@ -39,7 +39,7 @@ struct CanvasView: View {
                     })
                 ground(vp: vp)
                 world(visible: visible, size: size, vp: vp)
-                EdgeLayer(document: store.document, viewport: vp)
+                EdgeLayer(document: store.document, viewport: vp, derived: store.derivedEdges())
                     .allowsHitTesting(false)
                 pendingEdge(vp: vp)
                 if let marquee {
@@ -202,7 +202,8 @@ struct CanvasView: View {
                     ? store.preview(for: path)
                     : CardPreview(title: VaultPath.name(of: path), lines: [], chips: [], frontmatter: Frontmatter())
                 CardNodeView(node: node, path: path, kind: kind, preview: preview,
-                             url: vault.url(for: path), missing: !vault.exists(path), selected: selected)
+                             url: vault.url(for: path), missing: !vault.exists(path), selected: selected,
+                             tint: store.tint(for: node))
                     .onTapGesture(count: 2) { if kind == .canvas { store.openCanvas(at: path) } }
                     .onTapGesture { select(node) }
             }

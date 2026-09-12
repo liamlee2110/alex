@@ -252,7 +252,7 @@ final class McpRpc {
             return CanvasDocument()
         }
         let entries = ((try? VaultListing.entries(in: directory, root: root)) ?? [])
-        let doc = CanvasDocument(nodes: Layout.autoLayout(entries))
+        let doc = CanvasDocument(nodes: Placement.autoLayout(entries))
         try vault.write(try doc.encode(), to: path)
         return doc
     }
@@ -298,7 +298,7 @@ final class McpRpc {
         if let id = str(args, "near"), let n = doc.node(id) { near = n.frame }
         else if path == canvas.canvasPath, let selected = canvas.selectedNode { near = selected.frame }
         let finalSize = CGSize(width: num(args, "width") ?? size.width, height: num(args, "height") ?? size.height)
-        return CGRect(origin: Layout.freeSlot(for: finalSize, in: doc, near: near), size: finalSize)
+        return CGRect(origin: Placement.freeSlot(for: finalSize, in: doc, near: near), size: finalSize)
     }
 
     // MARK: - The eight
@@ -339,14 +339,14 @@ final class McpRpc {
             let node: CanvasNode
             switch type {
             case "text":
-                let frame = placement(in: doc, path: path, args: args, size: Layout.textSize)
+                let frame = placement(in: doc, path: path, args: args, size: Placement.textSize)
                 node = CanvasNode(kind: .text, frame: frame, text: str(args, "text") ?? "",
                                   color: str(args, "color") ?? "3")
             case "file":
                 guard let file = str(args, "file") else { return .failure("file is required for a file card") }
                 let rel = try VaultPath.normalise(file)
                 guard vault.exists(rel) else { return .failure(DoorError.missing(rel).description) }
-                let size = vault.isDirectory(rel) ? Layout.folderSize : Layout.cardSize
+                let size = vault.isDirectory(rel) ? Placement.folderSize : Placement.cardSize
                 let frame = placement(in: doc, path: path, args: args, size: size)
                 node = CanvasNode(kind: .file, frame: frame, file: rel, color: str(args, "color"))
             case "link":
@@ -390,7 +390,7 @@ final class McpRpc {
                     result["canvas"] = canvasFile
                     result["node"] = nodeSummary(existing)
                 } else {
-                    let frame = placement(in: doc, path: canvasFile, args: args, size: Layout.cardSize)
+                    let frame = placement(in: doc, path: canvasFile, args: args, size: Placement.cardSize)
                     let node = CanvasNode(kind: .file, frame: frame, file: path)
                     doc.nodes.append(node)
                     try saveCanvas(doc, to: canvasFile)
@@ -479,20 +479,12 @@ final class McpRpc {
             let tree = try VaultNode.scan(dir, root: root, depth: 6)
             var paths = tree.flatMap(\.flattened).map(\.path)
             if let pattern = str(args, "glob") {
-                paths = paths.filter { Self.matches($0, pattern) }
+                paths = paths.filter { VaultPath.matches($0, glob: pattern) }
             }
             return .success(["dir": dir, "files": paths] as [String: Any])
         } catch {
             return .failure("\(error)")
         }
-    }
-
-    /// `**/` means any directories; `*` and `?` as usual.
-    static func matches(_ path: String, _ pattern: String) -> Bool {
-        let flat = pattern.replacingOccurrences(of: "**/", with: "")
-        if fnmatch(pattern, path, 0) == 0 { return true }
-        if fnmatch(flat, path, 0) == 0 { return true }
-        return fnmatch(flat, VaultPath.name(of: path), 0) == 0 && pattern.hasPrefix("**/")
     }
 
     // MARK: - JSON-RPC plumbing

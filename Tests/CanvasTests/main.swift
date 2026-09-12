@@ -160,9 +160,53 @@ func storeTests() {
     check(store.directory.isEmpty, "went back up")
     check(store.document.nodes.first { $0.kind == .group } != nil, "root canvas reloaded from disk with the group intact")
 
+    print("\n— canvas.config.json —")
+    check(VaultPath.matches("competencies/C0.1.md", glob: "competencies/*.md"), "glob: one level")
+    check(!VaultPath.matches("sessions/x.md", glob: "competencies/*.md"), "glob: other directory")
+    check(VaultPath.matches("a/b/c.png", glob: "**/*.png") && VaultPath.matches("c.png", glob: "**/*.png"), "glob: any depth")
+    let courses = root.appendingPathComponent("courses")
+    try! fm.createDirectory(at: courses, withIntermediateDirectories: true)
+    try! "---\nid: C0.1\nphase: 0\nstatus: done\nprerequisites: []\n---\n# First\n".write(to: courses.appendingPathComponent("C0.1.md"), atomically: true, encoding: .utf8)
+    try! "---\nid: C1.1\nphase: 1\nstatus: in progress\nprerequisites: [C0.1]\n---\n# Second\n".write(to: courses.appendingPathComponent("C1.1.md"), atomically: true, encoding: .utf8)
+    try! "---\nid: C1.2\nphase: 1\nstatus: not started\nprerequisites: [C0.1, C1.1]\n---\n# Third\n".write(to: courses.appendingPathComponent("C1.2.md"), atomically: true, encoding: .utf8)
+    let config = """
+    {"views": [{"match": "courses/*.md", "colorBy": "status",
+                "colors": {"done": "4", "in progress": "5", "not started": ""},
+                "groupBy": "phase", "groupLabel": "Block {value}", "edgesFrom": "prerequisites"}]}
+    """
+    try! config.write(to: root.appendingPathComponent("canvas.config.json"), atomically: true, encoding: .utf8)
+    store.loadConfig()
+    check(store.config.views.count == 1 && store.config.views[0].groupBy == "phase", "config decoded")
+    store.openDirectory("courses")
+    let first = store.node(forFile: "courses/C0.1.md")!
+    let second = store.node(forFile: "courses/C1.1.md")!
+    let third = store.node(forFile: "courses/C1.2.md")!
+    check(store.tint(for: first)?.color == "4" && store.tint(for: second)?.color == "5", "colorBy maps status to a colour")
+    check(store.tint(for: third) == nil, "an empty mapping means no tint")
+    let derived = Set(store.derivedEdges())
+    check(derived == [CanvasStore.DerivedEdge(from: first.id, to: second.id),
+                      CanvasStore.DerivedEdge(from: first.id, to: third.id),
+                      CanvasStore.DerivedEdge(from: second.id, to: third.id)],
+          "prerequisites become edges from the prerequisite to the course", "got \(derived)")
+    check(store.arrangeByConfig(), "arrange finds the rule")
+    let groups = store.document.nodes.filter { $0.kind == .group }
+    check(groups.map(\.label) == ["Block 0", "Block 1"], "one labelled group per phase, in order", "got \(groups.map(\.label))")
+    check(groups[1].frame.contains(store.document.node(second.id)!.frame) && groups[1].frame.contains(store.document.node(third.id)!.frame), "block 1 holds its two cards")
+    check(!store.document.node(second.id)!.frame.intersects(store.document.node(third.id)!.frame), "cards inside a group do not overlap")
+    check(store.arrangeByConfig() && store.document.nodes.filter { $0.kind == .group }.count == 2, "arranging again replaces the groups instead of stacking them")
+    store.openDirectory("")
+
+    print("\n— Search —")
+    check(SearchIndex.score("plan", in: "plan.md plan") ?? -1 > SearchIndex.score("plan", in: "notes/planning-a-trip.md") ?? -1, "a prefix match outranks a later one")
+    check(SearchIndex.score("cst", in: "constitution.md") != nil, "subsequence matches")
+    check(SearchIndex.score("xyz", in: "constitution.md") == nil, "no match is nil")
+    let hits = SearchIndex.search("c1", vault: vault, store: store)
+    check(hits.first?.path.hasPrefix("courses/C1") == true, "search finds by path", "got \(hits.map(\.path).prefix(3))")
+    check(SearchIndex.search("Second", vault: vault, store: store).first?.path == "courses/C1.1.md", "search finds a note by its title")
+
     print("\n— Layout —")
-    let slot = Layout.freeSlot(for: Layout.cardSize, in: store.document, near: nil)
-    check(!store.document.nodes.contains { $0.frame.intersects(CGRect(origin: slot, size: Layout.cardSize)) },
+    let slot = Placement.freeSlot(for: Placement.cardSize, in: store.document, near: nil)
+    check(!store.document.nodes.contains { $0.frame.intersects(CGRect(origin: slot, size: Placement.cardSize)) },
           "free slot below everything does not overlap")
 
 }

@@ -133,7 +133,7 @@ func doorTests() {
     check(listed.contains("alpha.md") && listed.contains("artifacts/C3.1/notes.md") && !listed.contains("quiet.canvas"), "glob lists notes at any depth", "got \(listed)")
     let onlyArtifacts = tool("list_files", ["dir": "artifacts"])
     check((onlyArtifacts.payload["files"] as? [String])?.allSatisfy { $0.hasPrefix("artifacts/") } == true, "dir narrows the listing")
-    check(McpRpc.matches("artifacts/C3.1/plot.png", "artifacts/**/*.png") && !McpRpc.matches("plot.png", "artifacts/**/*.png"), "glob matching")
+    check(VaultPath.matches("artifacts/C3.1/plot.png", glob: "artifacts/**/*.png") && !VaultPath.matches("plot.png", glob: "artifacts/**/*.png"), "glob matching")
 }
 
 MainActor.assumeIsolated { doorTests() }

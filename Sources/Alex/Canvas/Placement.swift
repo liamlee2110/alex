@@ -3,7 +3,7 @@ import CoreGraphics
 
 /// Where things go when nobody has placed them yet: the first visit to a
 /// directory, and a card the door adds without coordinates.
-enum Layout {
+enum Placement {
     static let folderSize = CGSize(width: 200, height: 150)
     static let cardSize = CGSize(width: 320, height: 200)
     static let textSize = CGSize(width: 240, height: 160)

@@ -26,6 +26,13 @@ struct CanvasCommands: Commands {
                 .disabled(store == nil)
         }
         CommandMenu("Canvas") {
+            Button("Find in vault…") { store?.showSearch = true }
+                .keyboardShortcut("k", modifiers: .command)
+                .disabled(store == nil)
+            Button("Arrange by frontmatter") { store?.arrangeByConfig() }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .disabled(store == nil)
+            Divider()
             Button("Group selection") { store?.groupSelection() }
                 .keyboardShortcut("g", modifiers: .command)
                 .disabled(store == nil)

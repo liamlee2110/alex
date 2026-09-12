@@ -4,10 +4,18 @@ import SwiftUI
 struct EdgeLayer: View {
     let document: CanvasDocument
     let viewport: Viewport
+    /// Edges implied by frontmatter (PLAN.md §4): dashed, never stored.
+    var derived: [CanvasStore.DerivedEdge] = []
 
     var body: some View {
         Canvas { context, _ in
             let byID = Dictionary(document.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            for implied in derived {
+                guard let a = byID[implied.from], let b = byID[implied.to] else { continue }
+                var edge = CanvasEdge(from: implied.from, to: implied.to)
+                edge.toEnd = "arrow"
+                draw(edge, from: a, to: b, in: &context, dashed: true)
+            }
             for edge in document.edges {
                 guard let a = byID[edge.fromNode], let b = byID[edge.toNode] else { continue }
                 draw(edge, from: a, to: b, in: &context)
@@ -16,7 +24,7 @@ struct EdgeLayer: View {
     }
 
     private func draw(_ edge: CanvasEdge, from a: CanvasNode, to b: CanvasNode,
-                      in context: inout GraphicsContext) {
+                      in context: inout GraphicsContext, dashed: Bool = false) {
         let sides = EdgeGeometry.sides(from: a.frame, to: b.frame,
                                        fromSide: edge.fromSide, toSide: edge.toSide)
         let p0: CGPoint = viewport.toScreen(EdgeGeometry.anchor(a.frame, sides.from))
@@ -34,7 +42,9 @@ struct EdgeLayer: View {
         let hue: Double? = edge.color.flatMap(Stock.hue(forCanvasColor:))
         let color: Color = hue.map { OKLCH.color(l: 0.55, c: 0.12, h: $0) } ?? Ink.guide
         let width: CGFloat = max(1, 1.5 * viewport.scale)
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
+        let dash: [CGFloat] = dashed ? [max(4, 6 * viewport.scale), max(3, 5 * viewport.scale)] : []
+        context.stroke(path, with: .color(color),
+                       style: StrokeStyle(lineWidth: width, lineCap: .round, dash: dash))
 
         let arrowSize: CGFloat = 6 + 5 * viewport.scale
         if edge.toEnd != "none" {

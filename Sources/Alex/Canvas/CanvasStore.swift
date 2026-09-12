@@ -24,6 +24,10 @@ final class CanvasStore: ObservableObject {
     /// True when a canvas opened with no remembered viewport: the view, which
     /// knows its size, fits the contents and clears this.
     @Published var wantsFit = false
+    /// The vault's `canvas.config.json`, reloaded whenever the vault changes.
+    @Published private(set) var config = VaultConfig()
+    /// The ⌘K panel; the menu sets it, the panel clears it.
+    @Published var showSearch = false
 
     private var previews: [String: (generation: Int, preview: CardPreview)] = [:]
     private var peekCache: [String: (generation: Int, entries: [VaultEntry], count: Int)] = [:]
@@ -71,6 +75,7 @@ final class CanvasStore: ObservableObject {
         openedRoot = root
         previews.removeAll()
         peekCache.removeAll()
+        loadConfig()
         guard let root else {
             isOpen = false
             document = CanvasDocument()
@@ -125,7 +130,7 @@ final class CanvasStore: ObservableObject {
                 document = CanvasDocument()
             }
         } else if createIfMissing {
-            document = CanvasDocument(nodes: Layout.autoLayout(directoryEntries()))
+            document = CanvasDocument(nodes: Placement.autoLayout(directoryEntries()))
             save()
         } else {
             document = CanvasDocument()
@@ -160,6 +165,7 @@ final class CanvasStore: ObservableObject {
     private func outsideChange() {
         previews.removeAll()
         peekCache.removeAll()
+        loadConfig()
         if let url = vault.url(for: canvasPath),
            let data = try? Data(contentsOf: url), data != lastWritten,
            let doc = try? CanvasDocument.decode(data) {
@@ -232,6 +238,132 @@ final class CanvasStore: ObservableObject {
             // Panning to the card is the point; a fit would zoom it away.
             wantsFit = false
         }
+    }
+
+    // MARK: - The vault's views (canvas.config.json)
+
+    func loadConfig() {
+        if let url = vault.url(for: VaultConfig.fileName), let data = try? Data(contentsOf: url) {
+            config = VaultConfig.decode(data)
+        } else {
+            config = VaultConfig()
+        }
+        derivedCache = nil
+    }
+
+    /// The rule covering a file card, if any.
+    func rule(for node: CanvasNode) -> ViewRule? {
+        guard node.kind == .file, let file = node.file, !isDirectoryNode(node) else { return nil }
+        return config.rule(for: file)
+    }
+
+    /// The card's colour under its rule: the `colorBy` key's value, mapped.
+    func tint(for node: CanvasNode) -> (key: String, value: String, color: String)? {
+        guard let rule = rule(for: node), let key = rule.colorBy, let file = node.file,
+              VaultEntry.Kind.forExtension((file as NSString).pathExtension) == .markdown,
+              let value = preview(for: file).frontmatter[key]?.display, !value.isEmpty,
+              let color = rule.color(for: value) else { return nil }
+        return (key, value, color)
+    }
+
+    struct DerivedEdge: Hashable {
+        let from: String
+        let to: String
+    }
+
+    private var derivedCache: (generation: Int, document: CanvasDocument, edges: [DerivedEdge])?
+
+    /// Edges the frontmatter implies: a card whose `edgesFrom` key lists
+    /// ids points at the cards whose `idKey` (or file stem) carries them.
+    /// Drawn dashed, never stored.
+    func derivedEdges() -> [DerivedEdge] {
+        if let cached = derivedCache, cached.generation == vault.generation, cached.document == document {
+            return cached.edges
+        }
+        var byID: [String: String] = [:]
+        var sources: [(node: CanvasNode, values: [String])] = []
+        for node in document.nodes {
+            guard let rule = rule(for: node), let file = node.file,
+                  VaultEntry.Kind.forExtension((file as NSString).pathExtension) == .markdown else { continue }
+            let fm = preview(for: file).frontmatter
+            let stem = (VaultPath.name(of: file) as NSString).deletingPathExtension
+            byID[stem] = node.id
+            if let id = fm[rule.idKey]?.display, !id.isEmpty { byID[id] = node.id }
+            if let key = rule.edgesFrom, let value = fm[key] {
+                let values: [String]
+                switch value {
+                case .list(let list): values = list
+                default: values = value.display.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                }
+                sources.append((node, values.filter { !$0.isEmpty }))
+            }
+        }
+        var edges: [DerivedEdge] = []
+        for source in sources {
+            for value in source.values {
+                if let target = byID[value], target != source.node.id {
+                    edges.append(DerivedEdge(from: target, to: source.node.id))
+                }
+            }
+        }
+        derivedCache = (vault.generation, document, edges)
+        return edges
+    }
+
+    /// Lay the canvas out by the first rule with a `groupBy` that covers
+    /// files here: one labelled group per value, cards in rows inside,
+    /// groups stacked. Groups from an earlier arrange by the same key are
+    /// replaced; anything the rule does not cover is left where it is.
+    @discardableResult
+    func arrangeByConfig() -> Bool {
+        let cards = document.nodes.filter { $0.kind == .file && !isDirectoryNode($0) }
+        guard let rule = config.views.first(where: { rule in
+            rule.groupBy != nil && cards.contains { rule.applies(to: $0.file ?? "") }
+        }), let key = rule.groupBy else {
+            trouble = "No view in \(VaultConfig.fileName) groups the files on this canvas."
+            return false
+        }
+        let matching = cards.filter { rule.applies(to: $0.file ?? "") }
+        var buckets: [String: [CanvasNode]] = [:]
+        for node in matching {
+            let value = preview(for: node.file ?? "").frontmatter[key]?.display ?? ""
+            buckets[value.isEmpty ? "other" : value, default: []].append(node)
+        }
+        let order = buckets.keys.sorted { a, b in
+            if let x = Double(a), let y = Double(b) { return x < y }
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }
+        let columns = 4
+        let card = Placement.cardSize, gap = Placement.cardGap
+        let pad: CGFloat = 30, labelRoom: CGFloat = 46
+        mutate("Arrange by \(key)") { doc in
+            doc.nodes.removeAll { $0.kind == .group && $0.extra["x-arranged-by"]?.string == key }
+            var y = Placement.origin.y
+            for (i, value) in order.enumerated() {
+                let nodes = (buckets[value] ?? []).sorted {
+                    ($0.file ?? "").localizedStandardCompare($1.file ?? "") == .orderedAscending
+                }
+                let rows = (nodes.count + columns - 1) / columns
+                let width = CGFloat(min(nodes.count, columns)) * (card.width + gap.width) - gap.width + 2 * pad
+                let height = CGFloat(rows) * (card.height + gap.height) - gap.height + 2 * pad + labelRoom
+                var group = CanvasNode(kind: .group,
+                                       frame: CGRect(x: Placement.origin.x, y: y, width: max(width, 400), height: height),
+                                       label: rule.label(for: value))
+                group.color = rule.color(for: value) ?? String((i % 6) + 1)
+                group.extra["x-arranged-by"] = .string(key)
+                // Groups first so they draw behind, in block order.
+                doc.nodes.insert(group, at: i)
+                for (j, node) in nodes.enumerated() {
+                    var moved = node
+                    moved.x = Placement.origin.x + pad + CGFloat(j % columns) * (card.width + gap.width)
+                    moved.y = y + labelRoom + pad + CGFloat(j / columns) * (card.height + gap.height)
+                    doc.update(moved)
+                }
+                y += height + 60
+            }
+        }
+        wantsFit = true
+        return true
     }
 
     // MARK: - Previews and peeks
@@ -364,9 +496,9 @@ final class CanvasStore: ObservableObject {
     @discardableResult
     func place(_ path: String, at point: CGPoint? = nil, near: String? = nil) -> CanvasNode {
         let isDir = vault.isDirectory(path)
-        let size = isDir ? Layout.folderSize : Layout.cardSize
+        let size = isDir ? Placement.folderSize : Placement.cardSize
         let anchor = near.flatMap { document.node($0)?.frame } ?? selectedNode?.frame
-        let origin = point ?? Layout.freeSlot(for: size, in: document, near: anchor)
+        let origin = point ?? Placement.freeSlot(for: size, in: document, near: anchor)
         let node = CanvasNode(kind: .file, frame: CGRect(origin: origin, size: size), file: path)
         return add(node, name: "Place")
     }
@@ -375,11 +507,11 @@ final class CanvasStore: ObservableObject {
         let entries = unplaced
         guard !entries.isEmpty else { return }
         mutate("Place all") { doc in
-            var start = doc.bounds.isNull ? Layout.origin : CGPoint(x: Layout.origin.x, y: doc.bounds.maxY + 60)
-            for node in Layout.autoLayout(entries) {
+            var start = doc.bounds.isNull ? Placement.origin : CGPoint(x: Placement.origin.x, y: doc.bounds.maxY + 60)
+            for node in Placement.autoLayout(entries) {
                 var placed = node
-                placed.x += start.x - Layout.origin.x
-                placed.y += start.y - Layout.origin.y
+                placed.x += start.x - Placement.origin.x
+                placed.y += start.y - Placement.origin.y
                 doc.nodes.append(placed)
             }
             start.y += 1
@@ -389,13 +521,13 @@ final class CanvasStore: ObservableObject {
     /// A sticky note. Without a point it lands in the middle of the view.
     @discardableResult
     func addSticky(at world: CGPoint?) -> CanvasNode {
-        let size = Layout.textSize
+        let size = Placement.textSize
         let origin: CGPoint
         if let world {
             origin = CGPoint(x: world.x - size.width / 2, y: world.y - size.height / 2)
         } else {
             let centre = viewport.toWorld(CGPoint(x: viewSize.width / 2, y: viewSize.height / 2))
-            origin = Layout.freeSlot(for: size, in: document,
+            origin = Placement.freeSlot(for: size, in: document,
                                      near: CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2,
                                                   width: size.width, height: size.height))
         }

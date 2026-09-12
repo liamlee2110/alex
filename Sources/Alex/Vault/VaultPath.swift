@@ -51,4 +51,13 @@ enum VaultPath {
     static func join(_ directory: String, _ name: String) -> String {
         directory.isEmpty ? name : directory + "/" + name
     }
+
+    /// Shell globbing over vault paths: `*` and `?` as usual, `**/` for any
+    /// depth including none, and a bare `**/x` also matches a top-level x.
+    static func matches(_ path: String, glob pattern: String) -> Bool {
+        if fnmatch(pattern, path, 0) == 0 { return true }
+        let flat = pattern.replacingOccurrences(of: "**/", with: "")
+        if fnmatch(flat, path, 0) == 0 { return true }
+        return pattern.hasPrefix("**/") && fnmatch(flat, name(of: path), 0) == 0
+    }
 }
