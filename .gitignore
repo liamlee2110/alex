@@ -1,0 +1,5 @@
+.build/
+.swiftpm/
+.DS_Store
+Alex.app/
+/snapshots/

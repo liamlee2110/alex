@@ -1,0 +1,55 @@
+#!/bin/bash
+# Runs every suite in Tests/. No Xcode project and no XCTest target, the same
+# reasoning as Donna's: standalone harnesses compiled with swiftc are simpler,
+# and the view suite (from M1) will need a real bundle anyway.
+set -uo pipefail
+cd "$(dirname "$0")"
+
+SCRATCH="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH"' EXIT
+FAILED=0
+
+run() {  # run <name> <binary> [args...]
+  local name="$1"; shift
+  echo ""
+  echo "═══ $name ═══"
+  if "$@"; then :; else FAILED=1; fi
+}
+
+# The design law (Style.swift header) has teeth: prose rules decay, linted
+# rules don't. Each check greps for a banned pattern in the UI sources.
+design_law() {
+  local ok=0
+  UI=$(find Sources/Alex/Views Sources/Alex/App -name '*.swift')
+  lint() {  # lint <rule name> <pattern> [exclude-file-substring]
+    local hits
+    hits=$(grep -n "$2" $UI | { [ -n "${3:-}" ] && grep -v "$3" || cat; })
+    if [ -n "$hits" ]; then
+      echo "  ✗ $1"; echo "$hits" | sed 's/^/      /'; ok=1
+    else
+      echo "  ok    $1"
+    fi
+  }
+  lint "no semibold or heavier (law 1)" "semibold\|weight: \.bold\|weight: \.heavy"
+  lint "no italics in chrome (law 2)" "\.italic()"
+  lint "no raw primary-opacity fills (law 4)" "Color.primary.opacity(0\.0" "Style.swift"
+  lint "no off-scale radii (law 5)" "cornerRadius: \(5\|6\|7\|8\|9\|10\|11\|12\|14\|16\))"
+  lint "no uppercase labels (law 6)" "\.uppercased()"
+  lint "no ad-hoc shadows (law 8)" "\.shadow(color:" "Style.swift"
+  return $ok
+}
+
+run "Design law" design_law
+
+# Pure Foundation files only: nothing here may import SwiftUI or AppKit.
+MODELS=(Sources/Alex/Vault/VaultPath.swift Sources/Alex/Vault/VaultEntry.swift)
+
+echo ""
+echo "==> Compiling suites"
+swiftc -O -o "$SCRATCH/model" "${MODELS[@]}" Tests/ModelTests/main.swift || exit 1
+
+run "Model logic" "$SCRATCH/model"
+
+echo ""
+if [ "$FAILED" -eq 0 ]; then echo "✓ All suites passed"; else echo "✗ Failures above"; fi
+exit "$FAILED"
