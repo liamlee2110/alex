@@ -8,16 +8,23 @@ APP="Alex.app"
 BUNDLE_ID="com.liamlee.alex"
 VERSION="0.1.0"
 
-echo "==> Compiling"
-swift build -c release --arch arm64 --arch x86_64
-BIN_PATH="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+# One slice per triple through SwiftPM's native build, then lipo. A single
+# `--arch a --arch b` invocation routes through the Xcode build system,
+# which on Swift 6.1 rejects the package's language-mode setting.
+echo "==> Compiling arm64"
+swift build -c release --triple arm64-apple-macosx15.0
+ARM_BIN="$(swift build -c release --triple arm64-apple-macosx15.0 --show-bin-path)"
+echo "==> Compiling x86_64"
+swift build -c release --triple x86_64-apple-macosx15.0
+X86_BIN="$(swift build -c release --triple x86_64-apple-macosx15.0 --show-bin-path)"
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_PATH/Alex" "$APP/Contents/MacOS/Alex"
+lipo -create "$ARM_BIN/Alex" "$X86_BIN/Alex" -output "$APP/Contents/MacOS/Alex"
+lipo -info "$APP/Contents/MacOS/Alex"
 [ -f AppIcon.icns ] && cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-find "$BIN_PATH" -maxdepth 1 -type d -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
+find "$ARM_BIN" -maxdepth 1 -type d -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
