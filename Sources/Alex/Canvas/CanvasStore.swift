@@ -171,6 +171,21 @@ final class CanvasStore: ObservableObject {
         objectWillChange.send()
     }
 
+    /// The door wrote a canvas through the vault (a self-write the watcher
+    /// hides): if it is the open one, take it from disk, keeping selection
+    /// and viewport; either way the tray may have changed.
+    func noticeDoorWrite(to path: String) {
+        if path == canvasPath, let url = vault.url(for: path),
+           let data = try? Data(contentsOf: url), let doc = try? CanvasDocument.decode(data) {
+            document = doc
+            lastWritten = data
+            selection = selection.filter { id in doc.nodes.contains { $0.id == id } }
+        }
+        previews.removeAll()
+        peekCache.removeAll()
+        refreshUnplaced()
+    }
+
     // MARK: - Viewport memory
 
     private var viewportKey: String {

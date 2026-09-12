@@ -54,9 +54,11 @@ echo ""
 echo "==> Compiling suites"
 swiftc -O -o "$SCRATCH/model" "${MODELS[@]}" Tests/ModelTests/main.swift || exit 1
 swiftc -O -o "$SCRATCH/canvas" "${CANVAS[@]}" Tests/CanvasTests/main.swift || exit 1
+swiftc -O -o "$SCRATCH/door" "${CANVAS[@]}" Sources/Alex/Door/McpRpc.swift Tests/DoorTests/main.swift || exit 1
 
 run "Model logic" "$SCRATCH/model"
 run "Canvas store" "$SCRATCH/canvas"
+run "The door"     "$SCRATCH/door"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then echo "✓ All suites passed"; else echo "✗ Failures above"; fi

@@ -25,13 +25,34 @@ the decision rewritten first, not worked around.
 ```
 
 A build can also render its own window to a file and quit, for looking at a
-change without a screen:
+change without a screen. Dev flags: `--vault <dir>`, `--select <vault path>`
+(preselects and reveals a file), `--snapshot <png>`, `--snapshot-delay
+<seconds>`, `--door on` (opens the MCP door for a scripted check):
 
 ```bash
-mkdir -p snapshots && ./Alex.app/Contents/MacOS/Alex --vault ~/workspace/learn --snapshot snapshots/m0.png
+mkdir -p snapshots && ./Alex.app/Contents/MacOS/Alex --vault ~/workspace/learn --select queue.md --snapshot snapshots/check.png
 ```
 
-Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
+Run the app in the foreground for a snapshot; a backgrounded process never
+gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
+
+## Sharp edges found here
+
+- **Every dev flag takes a value.** AppKit reads `-key value` pairs off the
+  command line as defaults overrides. A bare `--door` swallowed the
+  `--snapshot` after it and the window never opened, with no error anywhere.
+- **`zsh`'s `echo` interprets `\n`.** Piping a JSON reply through `echo "$X"`
+  corrupts it; use `printf '%s'`.
+- **`UndoManager` groups by run-loop pass.** In a headless test every
+  mutation lands in one group unless the loop is pumped between them.
+- **A top-level `let` in a test `main.swift` is a global.** Its initialiser is
+  a nonisolated context, so touching a main-actor store there is an error;
+  put the store tests in a `@MainActor func` and call it through
+  `MainActor.assumeIsolated`.
+- **`Material` does not sample through `rotation3DEffect`.** The folder cover
+  is a flat translucent stock for that reason.
+- **The type checker gives up on a long `Canvas` closure.** Draw in a method
+  with explicit types (see `EdgeLayer`).
 
 ## Before saying you're done
 

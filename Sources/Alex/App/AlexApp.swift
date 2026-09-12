@@ -3,21 +3,24 @@ import SwiftUI
 @main
 struct AlexApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var vault = Vault(arguments: CommandLine.arguments)
+    @StateObject private var model = AppModel()
 
     var body: some Scene {
         WindowGroup("Alex") {
-            MainWindowView(vault: vault)
-                .environmentObject(vault)
+            MainWindowView(model: model)
+                .environmentObject(model.vault)
                 .frame(minWidth: 900, minHeight: 560)
         }
         .commands {
             CanvasCommands()
             CommandGroup(after: .newItem) {
                 Divider()
-                Button("Open vault…") { VaultPicker.choose(into: vault) }
+                Button("Open vault…") { VaultPicker.choose(into: model.vault) }
                     .keyboardShortcut("o", modifiers: .command)
             }
+        }
+        Settings {
+            SettingsView(model: model)
         }
     }
 }

@@ -2,14 +2,16 @@ import SwiftUI
 
 struct MainWindowView: View {
     @EnvironmentObject private var vault: Vault
-    @StateObject private var store: CanvasStore
+    @ObservedObject var model: AppModel
+    @ObservedObject private var store: CanvasStore
     /// `--select <vault path>` preselects a file at launch, for snapshots.
     @State private var sidebarSelection: String? = Launch.value(after: "--select")
     @State private var showInspector = Launch.value(after: "--select") != nil
     @State private var columns: NavigationSplitViewVisibility = .all
 
-    init(vault: Vault) {
-        _store = StateObject(wrappedValue: CanvasStore(vault: vault))
+    init(model: AppModel) {
+        self.model = model
+        store = model.canvas
     }
 
     var body: some View {
@@ -17,7 +19,7 @@ struct MainWindowView: View {
             WelcomeView()
         } else {
             NavigationSplitView(columnVisibility: $columns) {
-                SidebarView(selection: $sidebarSelection)
+                SidebarView(selection: $sidebarSelection, door: model.door)
                     .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)
             } detail: {
                 CanvasView(store: store)
@@ -89,6 +91,7 @@ struct WelcomeView: View {
 struct SidebarView: View {
     @EnvironmentObject private var vault: Vault
     @Binding var selection: String?
+    @ObservedObject var door: McpServer
 
     var body: some View {
         List(selection: $selection) {
@@ -108,6 +111,18 @@ struct SidebarView: View {
                 Text("\(vault.fileCount) files")
                     .font(Typography.label)
                     .foregroundStyle(Ink.faint)
+                switch door.status {
+                case .off:
+                    EmptyView()
+                case .serving:
+                    Label("Door open for Claude Code", systemImage: "circle.fill")
+                        .font(Typography.label)
+                        .foregroundStyle(Ink.muted)
+                case .failed(let why):
+                    Label("Door not serving: \(why)", systemImage: "exclamationmark.circle")
+                        .font(Typography.label)
+                        .foregroundStyle(Ink.primary)
+                }
                 if let trouble = vault.trouble {
                     Text(trouble)
                         .font(Typography.label)

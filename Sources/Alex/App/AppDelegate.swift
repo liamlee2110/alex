@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         if let path = Snapshot.requestedPath(CommandLine.arguments) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            let delay = Launch.value(after: "--snapshot-delay").flatMap(Double.init) ?? 2.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 Snapshot.write(to: path)
                 NSApp.terminate(nil)
             }
@@ -27,10 +28,13 @@ enum Snapshot {
 
     @MainActor
     static func write(to path: String) {
-        guard let window = NSApp.windows.first(where: { $0.isVisible }),
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
               let view = window.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            FileHandle.standardError.write(Data("snapshot: no visible window\n".utf8))
+            let seen = NSApp.windows.map {
+                "\($0.className) '\($0.title)' visible=\($0.isVisible) frame=\($0.frame)"
+            }.joined(separator: "; ")
+            FileHandle.standardError.write(Data("snapshot: no visible window (\(seen))\n".utf8))
             return
         }
         view.cacheDisplay(in: view.bounds, to: rep)
