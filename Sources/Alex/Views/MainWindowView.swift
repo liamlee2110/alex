@@ -34,10 +34,13 @@ struct MainWindowView: View {
                             }
                         }
                     }
+                    .ignoresSafeArea(.container, edges: .top)
                     .inspector(isPresented: $showInspector) {
                         InspectorView(store: store)
-                            .inspectorColumnWidth(min: 320, ideal: 460, max: 900)
+                            .inspectorColumnWidth(min: 340, ideal: 560, max: 960)
                     }
+                    .toolbar(removing: .title)
+                    .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                     .toolbar {
                         ToolbarItemGroup(placement: .navigation) {
                             Button {
@@ -47,6 +50,7 @@ struct MainWindowView: View {
                             }
                             .disabled(store.directory.isEmpty)
                             .help("Up one folder")
+                            BreadcrumbBar(store: store)
                         }
                         ToolbarItemGroup(placement: .primaryAction) {
                             Button {
@@ -61,7 +65,7 @@ struct MainWindowView: View {
             }
             .environmentObject(store)
             .focusedSceneValue(\.canvasStore, store)
-            .navigationTitle(store.title)
+            .navigationTitle("")
             .onChange(of: sidebarSelection) { _, path in
                 if let path { store.reveal(path) }
             }

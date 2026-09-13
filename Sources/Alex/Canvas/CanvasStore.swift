@@ -88,7 +88,10 @@ final class CanvasStore: ObservableObject {
     func openDirectory(_ dir: String) {
         guard let root = vault.root else { return }
         openedRoot = root
-        let target = vault.isDirectory(dir) ? dir : ""
+        let clean = (try? VaultPath.normalise(dir)) ?? ""
+        let target = vault.isDirectory(clean) ? clean : ""
+        // Already here: keep the viewport and the selection.
+        if isOpen, target == directory, canvasPath == Self.canvasFile(for: target, vault: vault) { return }
         saveViewport()
         directory = target
         canvasPath = Self.canvasFile(for: target, vault: vault)
@@ -198,8 +201,9 @@ final class CanvasStore: ObservableObject {
         "viewport:" + (vault.root?.path ?? "") + ":" + canvasPath
     }
 
+    /// A viewport still waiting for its first fit is not worth remembering.
     func saveViewport() {
-        guard isOpen else { return }
+        guard isOpen, !wantsFit else { return }
         UserDefaults.standard.set([viewport.offset.x, viewport.offset.y, viewport.scale],
                                   forKey: viewportKey)
     }
@@ -228,7 +232,8 @@ final class CanvasStore: ObservableObject {
 
     /// The sidebar or search picked a vault path: open the directory that
     /// holds it, select its node, ask the canvas to pan there.
-    func reveal(_ path: String) {
+    func reveal(_ rawPath: String) {
+        let path = (try? VaultPath.normalise(rawPath)) ?? rawPath
         if vault.isDirectory(path) { openDirectory(path); return }
         let parent = VaultPath.parent(of: path)
         if parent != directory || !isOpen { openDirectory(parent) }

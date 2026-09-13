@@ -28,8 +28,10 @@ enum Snapshot {
 
     @MainActor
     static func write(to path: String) {
+        // The frame view, not the content view: the title bar and toolbar
+        // are part of the picture now that the desk runs under them.
         guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
-              let view = window.contentView,
+              let view = window.contentView?.superview ?? window.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             let seen = NSApp.windows.map {
                 "\($0.className) '\($0.title)' visible=\($0.isVisible) frame=\($0.frame)"

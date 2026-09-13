@@ -23,10 +23,10 @@ struct CardNodeView: View {
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(tintHue.map { OKLCH.color(l: 0.975, c: 0.02, h: $0) } ?? Ink.card)
+            .background(tint.map { Hepta.fill($0.color) } ?? Ink.card)
             .clipShape(RoundedRectangle(cornerRadius: Radius.card))
             .overlay(RoundedRectangle(cornerRadius: Radius.card)
-                .strokeBorder(selected ? Accent.text : Ink.hairline, lineWidth: selected ? 2 : 1))
+                .strokeBorder(Accent.text, lineWidth: selected ? 2 : 0))
             .elevation(hovering ? .lifted : .card)
             .opacity(missing ? 0.55 : 1)
             .onHover { hovering = $0 }
@@ -100,13 +100,13 @@ struct CardNodeView: View {
                 if !preview.lines.isEmpty {
                     Text(preview.lines.joined(separator: "\n"))
                         .font(Typography.prose)
-                        .foregroundStyle(Ink.muted)
+                        .foregroundStyle(Ink.primary)
                         .lineLimit(6)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 missingLine
             }
-            .padding(Space.l)
+            .padding(14)
         }
     }
 
@@ -122,13 +122,14 @@ struct CardNodeView: View {
     private var chips: some View {
         HStack(spacing: 6) {
             ForEach(preview.chips, id: \.self) { chip in
-                let coloured = tint?.key == chip.key ? tintHue : nil
+                let coloured = tint?.key == chip.key ? tint?.color : nil
                 Text(chip.value)
                     .font(Typography.micro)
-                    .foregroundStyle(coloured.map { OKLCH.color(l: 0.35, c: 0.09, h: $0) } ?? Ink.muted)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(coloured.map { OKLCH.color(l: 0.88, c: 0.09, h: $0) } ?? Ink.well))
+                    .foregroundStyle(coloured != nil ? Hepta.labelText : Ink.muted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: Radius.mark)
+                        .fill(coloured.map { Hepta.label($0) } ?? Ink.well))
                     .help(chip.key)
             }
         }
@@ -148,8 +149,7 @@ struct StickyNodeView: View {
     @State private var saveTask: Task<Void, Never>?
     @FocusState private var focused: Bool
 
-    private var hue: Double { node.hue ?? Stock.hue(forCanvasColor: node.color) ?? 95 }
-    private var ink: Color { OKLCH.color(l: 0.25, c: 0.03, h: hue) }
+    private var ink: Color { Ink.primary }
 
     var body: some View {
         Group {
@@ -180,15 +180,15 @@ struct StickyNodeView: View {
             } else {
                 Text(node.text?.isEmpty == false ? node.text! : "Double-click to write")
                     .font(Typography.body)
-                    .foregroundStyle(node.text?.isEmpty == false ? ink : OKLCH.color(l: 0.55, c: 0.03, h: hue))
-                    .padding(Space.l)
+                    .foregroundStyle(node.text?.isEmpty == false ? ink : Ink.faint)
+                    .padding(14)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(OKLCH.color(l: 0.93, c: 0.07, h: hue))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.control))
-        .overlay(RoundedRectangle(cornerRadius: Radius.control)
-            .strokeBorder(selected ? Accent.text : OKLCH.color(l: 0.8, c: 0.06, h: hue), lineWidth: selected ? 2 : 1))
+        .background(Hepta.fill(node.color ?? "3"))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card)
+            .strokeBorder(Accent.text, lineWidth: selected ? 2 : 0))
         .elevation(.card)
     }
 }
@@ -216,12 +216,12 @@ struct LinkNodeView: View {
                     .lineLimit(3)
             }
         }
-        .padding(Space.l)
+        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Ink.card)
         .clipShape(RoundedRectangle(cornerRadius: Radius.card))
         .overlay(RoundedRectangle(cornerRadius: Radius.card)
-            .strokeBorder(selected ? Accent.text : Ink.hairline, lineWidth: selected ? 2 : 1))
+            .strokeBorder(Accent.text, lineWidth: selected ? 2 : 0))
         .elevation(.card)
     }
 }
@@ -239,33 +239,33 @@ struct UnknownNodeView: View {
             .background(Ink.well)
             .clipShape(RoundedRectangle(cornerRadius: Radius.card))
             .overlay(RoundedRectangle(cornerRadius: Radius.card)
-                .strokeBorder(selected ? Accent.text : Ink.hairline, lineWidth: 1))
+                .strokeBorder(Accent.text, lineWidth: selected ? 2 : 0))
     }
 }
 
-/// A labelled region behind other nodes.
+/// A section: the desk tinted with the section's colour inside a thin
+/// border of it, and the label as a solid pill sitting on the top edge,
+/// dark text on colour, the way Heptabase draws it.
 struct GroupNodeView: View {
     let node: CanvasNode
     let selected: Bool
 
-    private var hue: Double? { node.hue ?? Stock.hue(forCanvasColor: node.color) }
-
     var body: some View {
-        RoundedRectangle(cornerRadius: Radius.card)
-            .fill(hue.map { OKLCH.color(l: 0.9, c: 0.05, h: $0, alpha: 0.28) } ?? Ink.well)
-            .overlay(RoundedRectangle(cornerRadius: Radius.card)
-                .strokeBorder(selected ? Accent.text
-                              : (hue.map { OKLCH.color(l: 0.75, c: 0.06, h: $0, alpha: 0.5) } ?? Ink.hairline),
+        RoundedRectangle(cornerRadius: Radius.mark)
+            .fill(Hepta.sectionFill(node.color))
+            .overlay(RoundedRectangle(cornerRadius: Radius.mark)
+                .strokeBorder(selected ? Accent.text : Hepta.sectionBorder(node.color),
                               lineWidth: selected ? 2 : 1))
             .overlay(alignment: .topLeading) {
                 if let label = node.label, !label.isEmpty {
                     Text(label)
-                        .font(Typography.label)
-                        .foregroundStyle(hue.map { OKLCH.color(l: 0.35, c: 0.08, h: $0) } ?? Ink.muted)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(hue.map { OKLCH.color(l: 0.86, c: 0.08, h: $0) } ?? Ink.card))
-                        .padding(10)
+                        .font(Typography.sectionLabel)
+                        .foregroundStyle(Hepta.labelText)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background(RoundedRectangle(cornerRadius: Radius.control).fill(Hepta.label(node.color)))
+                        .offset(y: -24)
                 }
             }
     }

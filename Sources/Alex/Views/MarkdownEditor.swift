@@ -204,8 +204,8 @@ enum NoteCheckbox {
 /// every attribute is derived from the text, never accumulated. The pass only
 /// says what each character *is*; whether it's drawn is the view's call.
 private enum NoteStyle {
-    static let baseSize: CGFloat = 12.5
-    static let headingSizes: [CGFloat] = [17, 15, 13.5]
+    static let baseSize: CGFloat = 14.5
+    static let headingSizes: [CGFloat] = [24, 19, 16]
     /// A fence line is hidden, and shrunk so its height is the well's
     /// padding rather than a blank row inside the block.
     static let fenceSize: CGFloat = 8
@@ -234,8 +234,8 @@ private enum NoteStyle {
 
         storage.beginEditing()
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 2.5
-        paragraph.paragraphSpacing = 4
+        paragraph.lineSpacing = 4
+        paragraph.paragraphSpacing = 6
         // Every tab is one level of nesting, so every tab stop is one step.
         paragraph.tabStops = []
         paragraph.defaultTabInterval = ListIndent.step
@@ -278,7 +278,7 @@ private enum NoteStyle {
             }
             if inFence {
                 storage.addAttributes([
-                    .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular),
+                    .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
                     .foregroundColor: InkNS.muted,
                 ], range: lineRange)
                 let inset = indented(paragraph, by: codeIndent).mutableCopy() as! NSMutableParagraphStyle
@@ -387,7 +387,7 @@ private enum NoteStyle {
         for m in code.matches(in: line, range: whole) {
             taken.append(m.range)
             storage.addAttributes([
-                .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular),
+                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
                 .backgroundColor: InkNS.hairline.withAlphaComponent(0.55),
             ], range: shift(m.range))
             span(m, marks: 1)

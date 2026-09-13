@@ -17,6 +17,7 @@ struct InspectorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Ink.card)
     }
 }
 
@@ -110,7 +111,6 @@ struct FileInspector: View {
         VStack(spacing: 0) {
             header
             if changedOnDisk { banner }
-            Divider()
             content
         }
         .onAppear(perform: load)
@@ -120,11 +120,9 @@ struct FileInspector: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(name)
-                    .font(Typography.title)
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack(spacing: Space.s) {
+                PanelButton(symbol: "chevron.right.2", help: "Close the panel") { store.select(nil) }
                 Spacer()
                 if dirty {
                     Text("Saving")
@@ -132,21 +130,29 @@ struct FileInspector: View {
                         .foregroundStyle(Ink.faint)
                 }
                 if let url {
-                    Button {
+                    PanelButton(symbol: "arrow.up.forward.square", help: "Reveal in Finder", round: true) {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
-                    } label: {
-                        Image(systemName: "arrow.up.forward.square")
-                            .foregroundStyle(Ink.muted)
                     }
-                    .buttonStyle(.plain)
-                    .help("Reveal in Finder")
                 }
             }
-            Text(path)
-                .font(Typography.meta)
-                .foregroundStyle(Ink.faint)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            HStack(spacing: Space.s) {
+                Image(systemName: kind.symbol)
+                    .foregroundStyle(Ink.muted)
+                Text(name)
+                    .font(Typography.body)
+                    .foregroundStyle(Ink.primary)
+                    .lineLimit(1)
+                Spacer()
+                Text(VaultPath.parent(of: path))
+                    .font(Typography.meta)
+                    .foregroundStyle(Ink.faint)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.horizontal, Space.m)
+            .frame(height: 36)
+            .background(RoundedRectangle(cornerRadius: Radius.well).fill(Ink.card))
+            .overlay(RoundedRectangle(cornerRadius: Radius.well).strokeBorder(Ink.hairline, lineWidth: 1))
         }
         .padding(Space.l)
     }
@@ -389,5 +395,39 @@ struct GroupInspector: View {
         .padding(Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { label = node.label ?? "" }
+    }
+}
+
+/// The panel's small bordered buttons, square or round.
+struct PanelButton: View {
+    let symbol: String
+    let help: String
+    var round = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(Typography.control)
+                .foregroundStyle(Ink.icon)
+                .frame(width: 28, height: 28)
+                .background {
+                    if round {
+                        Circle().fill(Ink.card)
+                    } else {
+                        RoundedRectangle(cornerRadius: Radius.control).fill(Ink.card)
+                    }
+                }
+                .overlay {
+                    if round {
+                        Circle().strokeBorder(Ink.hairline, lineWidth: 1)
+                    } else {
+                        RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Ink.hairline, lineWidth: 1)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

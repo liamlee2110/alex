@@ -39,14 +39,13 @@ struct EdgeLayer: View {
         path.move(to: p0)
         path.addCurve(to: p3, control1: c1, control2: c2)
 
-        let hue: Double? = edge.color.flatMap(Stock.hue(forCanvasColor:))
-        let color: Color = hue.map { OKLCH.color(l: 0.55, c: 0.12, h: $0) } ?? Ink.guide
-        let width: CGFloat = max(1, 1.5 * viewport.scale)
-        let dash: [CGFloat] = dashed ? [max(4, 6 * viewport.scale), max(3, 5 * viewport.scale)] : []
+        let color: Color = edge.color.map { Hepta.label($0) } ?? (dashed ? Ink.guide.opacity(0.55) : Ink.guide)
+        let width: CGFloat = 1.5
+        let dash: [CGFloat] = dashed ? [6, 5] : []
         context.stroke(path, with: .color(color),
                        style: StrokeStyle(lineWidth: width, lineCap: .round, dash: dash))
 
-        let arrowSize: CGFloat = 6 + 5 * viewport.scale
+        let arrowSize: CGFloat = 9
         if edge.toEnd != "none" {
             EdgeGeometry.arrow(at: p3, from: c2, size: arrowSize, in: &context, color: color)
         }

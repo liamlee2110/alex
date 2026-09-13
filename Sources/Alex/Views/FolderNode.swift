@@ -65,7 +65,8 @@ struct FolderNodeView: View {
 
     var body: some View {
         let open = hovering
-        let counter = min(0.68 * pow(zoom, 0.4), 1.45) / zoom
+        // Damped counter-scale, capped so neighbours in the grid never overlap.
+        let counter = min(0.72 * pow(zoom, 0.35), 1.25) / zoom
         let curve = Animation.timingCurve(0.16, 1, 0.3, 1, duration: 0.55)
         ZStack(alignment: .topLeading) {
             FolderBackShape()
@@ -120,7 +121,7 @@ struct FolderNodeView: View {
                         .font(Typography.micro)
                         .foregroundStyle(OKLCH.color(l: 0.44, c: 0.04 * chroma, h: hue))
                     Text(name)
-                        .font(Typography.cardTitle)
+                        .font(Typography.folderTitle)
                         .foregroundStyle(OKLCH.color(l: 0.21, c: 0.03 * chroma, h: hue))
                         .lineLimit(2)
                         .minimumScaleFactor(0.7)
@@ -196,6 +197,6 @@ struct MiniPaper: View {
 extension Typography {
     /// The tiny type on a folder's peeking note. Off the reading scale on
     /// purpose: it is a picture of a note, not a note.
-    static let peekTitle = Font.system(size: 7, weight: .regular, design: .serif)
+    static let peekTitle = Font.system(size: 7, weight: .medium)
     static let peekLine = Font.system(size: 4.5)
 }

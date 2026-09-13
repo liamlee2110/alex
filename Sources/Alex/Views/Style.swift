@@ -27,10 +27,10 @@ import AppKit
 // MARK: - Shape and space
 
 enum Radius {
-    static let mark: CGFloat = 5
-    static let control: CGFloat = 7
-    static let well: CGFloat = 10
-    static let card: CGFloat = 16
+    static let mark: CGFloat = 4
+    static let control: CGFloat = 6
+    static let well: CGFloat = 8
+    static let card: CGFloat = 8
 }
 
 enum Space {
@@ -44,19 +44,24 @@ enum Space {
 // MARK: - Typography
 
 enum Typography {
-    /// The app's own name and the welcome page: the system serif.
-    static let display = Font.system(size: 34, weight: .regular, design: .serif)
-    /// A card's or folder's title on the canvas.
-    static let cardTitle = Font.system(size: 19, weight: .regular, design: .serif)
+    /// The app's own name and the welcome page.
+    static let display = Font.system(size: 34, weight: .medium)
+    /// A card's title on the canvas: Heptabase's bold card head, in the
+    /// law's heavier weight.
+    static let cardTitle = Font.system(size: 15, weight: .medium)
+    /// A folder's name on its cover.
+    static let folderTitle = Font.system(size: 17, weight: .medium)
     static let figure = Font.system(size: 22, weight: .medium)
-    static let title = Font.system(size: 17, weight: .medium)
+    static let title = Font.system(size: 15, weight: .medium)
     static let heading = Font.system(size: 14, weight: .medium)
     static let body = Font.system(size: 13)
     static let prose = Font.system(size: 12.5)
-    static let control = Font.system(size: 12, weight: .medium)
-    static let meta = Font.system(size: 11)
-    static let label = Font.system(size: 11, weight: .medium)
-    static let micro = Font.system(size: 10.5, weight: .medium)
+    static let control = Font.system(size: 13, weight: .medium)
+    static let meta = Font.system(size: 12)
+    static let label = Font.system(size: 12, weight: .medium)
+    static let micro = Font.system(size: 11, weight: .medium)
+    /// The section label pill.
+    static let sectionLabel = Font.system(size: 13, weight: .medium)
     static let mono = Font.system(size: 12, weight: .regular, design: .monospaced)
     static let monoSmall = Font.system(size: 10, weight: .regular, design: .monospaced)
 }
@@ -70,15 +75,15 @@ struct Elevation {
     let radius: CGFloat
     let y: CGFloat
 
-    /// A card resting on the desk.
-    static let card = Elevation(opacity: 0.07, radius: 10, y: 2)
-    /// Small raised pieces: pills, floating panels, peeks.
-    static let raised = Elevation(opacity: 0.08, radius: 4, y: 1)
+    /// A card resting on the desk: white on grey, barely a shadow.
+    static let card = Elevation(opacity: 0.04, radius: 2, y: 1)
+    /// Floating chrome: the tool palette, the zoom bar, peeks.
+    static let raised = Elevation(opacity: 0.10, radius: 8, y: 2)
     static let knob = Elevation(opacity: 0.12, radius: 1.5, y: 0.5)
     /// The folder's back panel.
-    static let folder = Elevation(opacity: 0.10, radius: 9, y: 4)
+    static let folder = Elevation(opacity: 0.08, radius: 8, y: 3)
     /// Anything under the pointer or being dragged.
-    static let lifted = Elevation(opacity: 0.16, radius: 18, y: 8)
+    static let lifted = Elevation(opacity: 0.14, radius: 16, y: 6)
 }
 
 extension View {
@@ -151,32 +156,33 @@ extension Color {
 /// Text and structure, as AppKit colours for the TextKit editor and as
 /// SwiftUI colours for everything else. Same ladder, one file.
 enum InkNS {
-    static let primary  = NSColor.dynamic(light: "1F2328", dark: "E8EAED")
-    static let muted    = NSColor.dynamic(light: "5F6B76", dark: "9BA5AE")
+    static let primary  = NSColor.dynamic(light: "2E2E2E", dark: "E6E6E6")
+    static let muted    = NSColor.dynamic(light: "6B6B6B", dark: "A6A6A6")
     static let faint = NSColor(name: nil) { appearance in
         let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         if NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
-            return dark ? NSColor(hex: "9BA5AE") : NSColor(hex: "5F6B76")
+            return dark ? NSColor(hex: "A6A6A6") : NSColor(hex: "6B6B6B")
         }
-        return dark ? NSColor(hex: "6B757E") : NSColor(hex: "98A3AC")
+        return dark ? NSColor(hex: "767676") : NSColor(hex: "9B9B9B")
     }
     static let hairline = NSColor(name: nil) { appearance in
         let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         if NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
-            return dark ? NSColor(hex: "3A434B") : NSColor(hex: "C9D1D8")
+            return dark ? NSColor(hex: "4A4A4A") : NSColor(hex: "C8C8C8")
         }
-        return dark ? NSColor(hex: "2B3238") : NSColor(hex: "E3E8EC")
+        return dark ? NSColor(hex: "3A3A3C") : NSColor(hex: "E3E3E3")
     }
-    static let guide = NSColor.dynamic(light: "C9D1D8", dark: "3A434B")
+    /// Edges between cards: Heptabase's near-black arrow ink.
+    static let guide = NSColor.dynamic(light: "404140", dark: "B4B4B4")
     static let well = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(hex: "E8EAED").withAlphaComponent(0.05)
-            : NSColor(hex: "1F2328").withAlphaComponent(0.045)
+            ? NSColor(hex: "E6E6E6").withAlphaComponent(0.06)
+            : NSColor(hex: "2E2E2E").withAlphaComponent(0.05)
     }
     static let wellHover = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(hex: "E8EAED").withAlphaComponent(0.09)
-            : NSColor(hex: "1F2328").withAlphaComponent(0.08)
+            ? NSColor(hex: "E6E6E6").withAlphaComponent(0.10)
+            : NSColor(hex: "2E2E2E").withAlphaComponent(0.08)
     }
 }
 
@@ -185,29 +191,30 @@ enum Ink {
     static let muted    = Color(nsColor: InkNS.muted)
     static let faint    = Color(nsColor: InkNS.faint)
     static let hairline = Color(nsColor: InkNS.hairline)
-    /// Edges between cards and the rail beside a quote: a step past
-    /// hairline, opaque, because a 1pt line carries structure.
+    /// Edges between cards and the rail beside a quote.
     static let guide    = Color(nsColor: InkNS.guide)
     static let well     = Color(nsColor: InkNS.well)
     static let wellHover = Color(nsColor: InkNS.wellHover)
     /// A card's paper.
-    static let card     = Color(light: "FFFFFF", dark: "26282B")
-    /// The desk every canvas sits on.
-    static let ground   = Color(light: "F4F1EA", dark: "18191B")
-    /// Chrome that floats over the desk: breadcrumb, zoom pills.
-    static let float    = Color(light: "FFFFFF", dark: "2C2E31")
+    static let card     = Color(light: "FFFFFF", dark: "2A2A2C")
+    /// The desk every canvas sits on: Heptabase's whiteboard grey.
+    static let ground   = Color(light: "EDECEC", dark: "1C1C1E")
+    /// Chrome that floats over the desk: the tool palette, the zoom bar.
+    static let float    = Color(light: "FFFFFF", dark: "2C2C2E")
+    /// Icon ink in the chrome.
+    static let icon     = Color(light: "3C3C3C", dark: "D0D0D0")
 }
 
-/// The one brand hue: selection, links, the caret, focus.
+/// The one brand hue: selection, the active tool, links, the caret.
 enum AccentNS {
-    static let text = NSColor.dynamic(light: "0F6CBD", dark: "6FB6FF")
+    static let text = NSColor.dynamic(light: "207DFF", dark: "4C9AFF")
 }
 
 enum Accent {
     static let text = Color(nsColor: AccentNS.text)
     static let wash = Color(nsColor: NSColor.dynamic(
-        light: NSColor(hex: "0F6CBD").withAlphaComponent(0.10),
-        dark: NSColor(hex: "6FB6FF").withAlphaComponent(0.16)))
+        light: NSColor(hex: "207DFF").withAlphaComponent(0.10),
+        dark: NSColor(hex: "4C9AFF").withAlphaComponent(0.16)))
 }
 
 // MARK: - Paper colours
@@ -245,8 +252,45 @@ enum OKLCH {
     }
 }
 
-/// The stocks a folder or sticky can be cut from. JSON Canvas colours "1"–"6"
-/// map onto these; a directory with no colour of its own takes one by name.
+/// Heptabase's whiteboard palette, sampled from its screenshots: the solid
+/// label and border colour of a section, and the pastel a card is filled
+/// with. JSON Canvas colours "1"–"6" are red, orange, yellow, green, cyan,
+/// purple; nil is grey.
+enum Hepta {
+    static func label(_ color: String?) -> Color {
+        switch color {
+        case "1": return Color(light: "F9786C", dark: "F9786C")
+        case "2": return Color(light: "F5A04A", dark: "F5A04A")
+        case "3": return Color(light: "F7CF4E", dark: "F7CF4E")
+        case "4": return Color(light: "30D667", dark: "30D667")
+        case "5": return Color(light: "5BA4DA", dark: "5BA4DA")
+        case "6": return Color(light: "B08CF0", dark: "B08CF0")
+        default:  return Color(light: "9C9C9C", dark: "8A8A8A")
+        }
+    }
+
+    /// A card cut from coloured stock.
+    static func fill(_ color: String?) -> Color {
+        switch color {
+        case "1": return Color(light: "F6C8C2", dark: "6A3A36")
+        case "2": return Color(light: "F7D0B2", dark: "6B4A2E")
+        case "3": return Color(light: "F8E8B0", dark: "6B5E2E")
+        case "4": return Color(light: "C9EBCF", dark: "2F5A3A")
+        case "5": return Color(light: "BED5E3", dark: "2F4A5A")
+        case "6": return Color(light: "DDD2F2", dark: "4A3A6A")
+        default:  return Color(light: "FFFFFF", dark: "2A2A2C")
+        }
+    }
+
+    /// Section fill and border: the label colour over the desk.
+    static func sectionFill(_ color: String?) -> Color { label(color).opacity(0.14) }
+    static func sectionBorder(_ color: String?) -> Color { label(color).opacity(0.5) }
+    /// The label's text: dark on every colour, as Heptabase draws it.
+    static let labelText = Color(light: "2E2E2E", dark: "1E1E1E")
+}
+
+/// The stocks a folder can be cut from; a directory with no colour of its
+/// own takes one by name.
 enum Stock {
     static let hues: [Double] = [95, 145, 240, 25, 300, 60, 190, 350]
     static let chromas: [Double] = [2.2, 1.0, 1.2, 1.2, 1.0, 1.6, 1.0, 1.1]

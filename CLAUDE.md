@@ -13,7 +13,9 @@ the decision rewritten first, not worked around.
 - **The door never deletes (D7).** Not gated, not hidden: absent.
 - **The design law** is the header of `Sources/Alex/Views/Style.swift` and
   `run-tests.sh` lints it. Two weights, no italics in chrome, four radii,
-  sentence case, one shadow, tokens not literals.
+  sentence case, one shadow, tokens not literals.  The look itself follows
+  Heptabase's whiteboard (PLAN.md, revision 4); its colours are sampled
+  values, not guesses, so change them with a reason.
 - **Donna's sharp edges apply here.** Before touching windows, panels, text
   views, hosting views or drags, read the "Sharp edges" section of
   `~/workspace/donna/ARCHITECTURE.md`. Each cost real time once.
@@ -24,10 +26,8 @@ the decision rewritten first, not worked around.
 ./build.sh && open Alex.app --args --vault ~/workspace/learn
 ```
 
-A build can also render its own window to a file and quit, for looking at a
-change without a screen. Dev flags: `--vault <dir>`, `--select <vault path>`
-(preselects and reveals a file), `--snapshot <png>`, `--snapshot-delay
-<seconds>`, `--door on` (opens the MCP door for a scripted check):
+A build can also render its own window (title bar included, since the desk
+runs under it) to a file and quit, for looking at a change without a screen:
 
 ```bash
 mkdir -p snapshots && ./Alex.app/Contents/MacOS/Alex --vault ~/workspace/learn --select queue.md --snapshot snapshots/check.png

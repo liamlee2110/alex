@@ -17,6 +17,10 @@ struct CanvasView: View {
     @State private var marquee: CGRect?
     @State private var connecting: (from: String, side: CanvasSide, to: CGPoint)?
     @State private var editingSticky: String?
+    /// The last fit or focus and the viewport it produced. The desk is often
+    /// narrow at launch, before the split view settles; if it resizes and
+    /// nobody has panned since, the fit or focus is redone at the new size.
+    @State private var settled: (viewport: Viewport, focus: String?)?
 
     var body: some View {
         GeometryReader { geo in
@@ -25,7 +29,6 @@ struct CanvasView: View {
             let visible = vp.visibleWorld(in: size).insetBy(dx: -400, dy: -400)
             ZStack(alignment: .topLeading) {
                 Ink.ground
-                DotGrid(viewport: vp)
                 EventCatcher(
                     onScroll: { delta, point, modifiers in
                         if modifiers.contains(.command) {
@@ -50,7 +53,15 @@ struct CanvasView: View {
                         .position(x: marquee.midX, y: marquee.midY)
                         .allowsHitTesting(false)
                 }
-                BreadcrumbBar(store: store)
+                // The desk runs under the top bar; a fade keeps the breadcrumb legible.
+                LinearGradient(stops: [.init(color: Ink.ground, location: 0),
+                                       .init(color: Ink.ground, location: 0.55),
+                                       .init(color: Ink.ground.opacity(0), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: 76)
+                    .allowsHitTesting(false)
+                ToolPalette(store: store)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 ZoomControls(store: store)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 if let trouble = store.trouble {
@@ -80,7 +91,14 @@ struct CanvasView: View {
             }
             .onChange(of: store.focusRequest) { _, id in focus(id, in: size) }
             .onChange(of: store.wantsFit) { _, wants in if wants { fit(in: size) } }
-            .onChange(of: size) { _, new in store.viewSize = new }
+            .onChange(of: size) { _, new in
+                store.viewSize = new
+                if store.wantsFit {
+                    fit(in: new)
+                } else if let settled, settled.viewport == store.viewport {
+                    if let id = settled.focus { focus(id, in: new, pulse: false) } else { fit(in: new) }
+                }
+            }
             .onChange(of: store.selection) { _, selection in
                 if let editing = editingSticky, !selection.contains(editing) { editingSticky = nil }
             }
@@ -333,25 +351,33 @@ struct CanvasView: View {
 
     // MARK: - Viewport
 
+    /// Fit below the top bar, which the desk runs under.
     private func fit(in size: CGSize) {
         guard size.width > 0 else { return }
-        store.viewport = Viewport.fitting(store.document.bounds, in: size)
+        let bar: CGFloat = 52
+        var vp = Viewport.fitting(store.document.bounds, in: CGSize(width: size.width, height: size.height - bar))
+        vp.offset.y += bar
+        store.viewport = vp
         store.wantsFit = false
+        settled = (vp, nil)
     }
 
-    private func focus(_ id: String?, in size: CGSize) {
+    private func focus(_ id: String?, in size: CGSize, pulse shouldPulse: Bool = true) {
         guard let id, let node = store.document.node(id) else { return }
         store.wantsFit = false
+        var vp = store.viewport
+        if vp.scale < 0.6 { vp.scale = 1 }
+        vp.center(on: node.center, in: size)
         withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.5)) {
-            var vp = store.viewport
-            if vp.scale < 0.6 { vp.scale = 1 }
-            vp.center(on: node.center, in: size)
             store.viewport = vp
         }
-        pulse = id
-        Task {
-            try? await Task.sleep(for: .seconds(1.4))
-            if pulse == id { pulse = nil }
+        settled = (vp, id)
+        if shouldPulse {
+            pulse = id
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                if pulse == id { pulse = nil }
+            }
         }
         store.focusRequest = nil
     }
@@ -368,30 +394,5 @@ private extension View {
             }
         }
         .animation(.easeOut(duration: 0.4), value: on)
-    }
-}
-
-/// A dot every 40 desk units, fading out when the desk is far away.
-struct DotGrid: View {
-    let viewport: Viewport
-
-    var body: some View {
-        Canvas { context, size in
-            let step = 40 * viewport.scale
-            guard step >= 14 else { return }
-            let startX = viewport.offset.x.truncatingRemainder(dividingBy: step)
-            let startY = viewport.offset.y.truncatingRemainder(dividingBy: step)
-            var path = Path()
-            var x = startX
-            while x < size.width {
-                var y = startY
-                while y < size.height {
-                    path.addEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
-                    y += step
-                }
-                x += step
-            }
-            context.fill(path, with: .color(Ink.hairline))
-        }
     }
 }

@@ -5,6 +5,15 @@ Revision 2: SwiftUI, native, macOS only (decided by Liam, 2026-09-13).
 Revision 3: named Alex; repo `liamlee2110/alex`, private until M5 (2026-09-13).
 Status: M0–M5 built and verified on 2026-09-13; v0.1.0. What each
 milestone delivered is in §7. The decisions still open are in §9.
+Revision 4 (2026-09-13, asked by Liam): the UI restyled to match
+Heptabase's whiteboard, measured from its screenshots — desk #EDECEC,
+white cards at radius 8 with no border and a 2pt #207DFF selection,
+sections as the label colour at 14% over the desk with a 50% border and a
+solid label pill on the top edge, arrows in #404140, a 40pt tool palette at
+the left, a zoom bar at the bottom right, the breadcrumb in a transparent
+top bar, a white panel with a bordered title row, the editor at 14.5pt with
+24/19/16 headings. Titles use Medium where Heptabase uses Semibold, because
+the design law (§6) allows two weights. The folder stays Alex's own.
 
 ## 0. One paragraph
 

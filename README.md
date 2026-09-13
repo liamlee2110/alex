@@ -76,7 +76,7 @@ where things stand. It is generic enough for any folder of notes.
   plain tree. Files in a directory that are not on its canvas wait in a
   tray in the panel; drag them out or place them with a click.
 
-<p align="center"><img src="docs/cards.png" width="820" alt="Paper cards inside a labelled group, sticky notes in yellow and cyan, a link card, and edges with labels"></p>
+<p align="center"><img src="docs/cards.png" width="820" alt="White cards inside two labelled sections, sticky notes in yellow and blue, a link card, and edges with labels"></p>
 
 ## Claude Code and the door
 
@@ -167,7 +167,12 @@ note), and files you or the door create on purpose. Nothing else. The
 SwiftUI and AppKit, one Swift package, no Xcode project, no dependencies.
 The Markdown editor, the MCP transport, the window plumbing and the design
 law come from [Donna](https://github.com/liamlee2110/donna), the same
-author's menu bar app. The folder is redrawn from a React original: same
+author's menu bar app. The look of the desk follows Heptabase's whiteboard,
+measured from its screenshots: the grey ground, borderless white cards with
+a 2pt blue selection, sections as tinted regions with a solid label pill on
+the top edge, near-black arrows, a tool palette at the left, a zoom bar at
+the bottom right, the breadcrumb in a transparent top bar and a wide white
+panel. The folder is Alex's own, redrawn from a React original: same
 silhouette, same hinge, same colour ladder, converted from OKLCH by hand.
 The plan, every decision and its reasons, and the milestones are in
 [PLAN.md](PLAN.md); the rules and the sharp edges are in
