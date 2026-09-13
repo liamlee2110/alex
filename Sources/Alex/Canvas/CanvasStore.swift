@@ -14,7 +14,9 @@ final class CanvasStore: ObservableObject {
     @Published private(set) var canvasPath = ""
     @Published private(set) var document = CanvasDocument()
     @Published var selection: Set<String> = []
-    @Published var viewport = Viewport()
+    @Published var viewport = Viewport() {
+        didSet { if oldValue != viewport { Trace.log("  viewport <- \(viewport)") } }
+    }
     @Published private(set) var unplaced: [VaultEntry] = []
     @Published private(set) var trouble: String?
     @Published private(set) var isOpen = false
@@ -90,6 +92,7 @@ final class CanvasStore: ObservableObject {
         openedRoot = root
         let clean = (try? VaultPath.normalise(dir)) ?? ""
         let target = vault.isDirectory(clean) ? clean : ""
+        Trace.log("openDirectory(\(dir)) -> \(target) isOpen=\(isOpen) current=\(directory) wantsFit=\(wantsFit) viewport=\(viewport)")
         // Already here: keep the viewport and the selection.
         if isOpen, target == directory, canvasPath == Self.canvasFile(for: target, vault: vault) { return }
         saveViewport()
@@ -98,6 +101,7 @@ final class CanvasStore: ObservableObject {
         selection = []
         load(createIfMissing: true)
         if let restored = restoredViewport() { viewport = restored } else { viewport = Viewport(); wantsFit = true }
+        Trace.log("  opened \(canvasPath) restored=\(restoredViewport() != nil) wantsFit=\(wantsFit)")
         isOpen = true
         UserDefaults.standard.set(target, forKey: "openDirectory:" + root.path)
     }
@@ -204,15 +208,19 @@ final class CanvasStore: ObservableObject {
     /// A viewport still waiting for its first fit is not worth remembering.
     func saveViewport() {
         guard isOpen, !wantsFit else { return }
+        Trace.log("  saveViewport \(canvasPath) = \(viewport)")
         UserDefaults.standard.set([viewport.offset.x, viewport.offset.y, viewport.scale],
                                   forKey: viewportKey)
     }
 
+    /// The untouched default is never a place someone chose to be, so a
+    /// remembered viewport equal to it counts as nothing remembered.
     private func restoredViewport() -> Viewport? {
         guard let a = UserDefaults.standard.array(forKey: viewportKey) as? [Double], a.count == 3 else {
             return nil
         }
-        return Viewport(offset: CGPoint(x: a[0], y: a[1]), scale: a[2])
+        let restored = Viewport(offset: CGPoint(x: a[0], y: a[1]), scale: a[2])
+        return restored == Viewport() ? nil : restored
     }
 
     // MARK: - Selection

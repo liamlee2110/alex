@@ -11,3 +11,13 @@ enum Launch {
         return arguments[i + 1]
     }
 }
+
+/// `ALEX_TRACE=1` in the environment prints store and viewport transitions
+/// to stderr, for chasing a launch-order bug without a debugger.
+enum Trace {
+    static let on = ProcessInfo.processInfo.environment["ALEX_TRACE"] == "1"
+    static func log(_ message: @autoclosure () -> String) {
+        guard on else { return }
+        FileHandle.standardError.write(Data((message() + "\n").utf8))
+    }
+}

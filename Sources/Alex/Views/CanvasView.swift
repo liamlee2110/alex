@@ -92,6 +92,7 @@ struct CanvasView: View {
             .onChange(of: store.focusRequest) { _, id in focus(id, in: size) }
             .onChange(of: store.wantsFit) { _, wants in if wants { fit(in: size) } }
             .onChange(of: size) { _, new in
+                Trace.log("size -> \(new) wantsFit=\(store.wantsFit) settled=\(String(describing: settled?.viewport)) viewport=\(store.viewport)")
                 store.viewSize = new
                 if store.wantsFit {
                     fit(in: new)
@@ -351,11 +352,15 @@ struct CanvasView: View {
 
     // MARK: - Viewport
 
-    /// Fit below the top bar, which the desk runs under.
+    /// Fit below the top bar and right of the tool palette, both of which
+    /// the desk runs under.
     private func fit(in size: CGSize) {
+        Trace.log("fit size=\(size) bounds=\(store.document.bounds) canvas=\(store.canvasPath)")
         guard size.width > 0 else { return }
-        let bar: CGFloat = 52
-        var vp = Viewport.fitting(store.document.bounds, in: CGSize(width: size.width, height: size.height - bar))
+        let bar: CGFloat = 52, palette: CGFloat = 64
+        var vp = Viewport.fitting(store.document.bounds,
+                                  in: CGSize(width: size.width - palette, height: size.height - bar))
+        vp.offset.x += palette
         vp.offset.y += bar
         store.viewport = vp
         store.wantsFit = false
@@ -367,7 +372,11 @@ struct CanvasView: View {
         store.wantsFit = false
         var vp = store.viewport
         if vp.scale < 0.6 { vp.scale = 1 }
+        // Centre in the desk right of the palette and below the top bar.
         vp.center(on: node.center, in: size)
+        vp.offset.x += 32
+        vp.offset.y += 26
+        Trace.log("focus \(id) size=\(size) -> \(vp)")
         withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.5)) {
             store.viewport = vp
         }
