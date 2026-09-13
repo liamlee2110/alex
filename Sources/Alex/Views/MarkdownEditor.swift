@@ -152,6 +152,8 @@ extension NSAttributedString.Key {
     /// A paragraph with something drawn behind it: the quote's rail, the
     /// rule's line, the code block's well. Value is a `NoteDecoration`.
     static let noteBlock = NSAttributedString.Key("alex.noteBlock")
+    /// A `[[name]]` link's target, on the name's characters.
+    static let noteLink = NSAttributedString.Key("alex.noteLink")
 }
 
 enum NoteDecoration: Int {
@@ -219,13 +221,15 @@ private enum NoteStyle {
     static let rule    = try! NSRegularExpression(pattern: #"^[ \t]*(-{3,}|\*{3,})[ \t]*$"#)
     static let fence   = try! NSRegularExpression(pattern: #"^```"#)
     static let code    = try! NSRegularExpression(pattern: #"`([^`\n]+)`"#)
+    static let wiki    = try! NSRegularExpression(pattern: #"\[\[([^\]\n]+)\]\]"#)
+    static let marked  = try! NSRegularExpression(pattern: #"==([^=\n]+)==(?!=)"#)
     static let bold    = try! NSRegularExpression(pattern: #"\*\*([^*\n]+?)\*\*"#)
     static let under   = try! NSRegularExpression(pattern: #"__([^_\n]+?)__"#)
     static let italicA = try! NSRegularExpression(pattern: #"(?<!\*)\*([^*\n]+?)\*(?!\*)"#)
     static let italicB = try! NSRegularExpression(pattern: #"(?<!_)_([^_\n]+?)_(?!_)"#)
 
     static let ownKeys: [NSAttributedString.Key] = [
-        .noteBullet, .noteHidden, .noteSpan, .noteMarker, .noteCheckbox, .noteBlock,
+        .noteBullet, .noteHidden, .noteSpan, .noteMarker, .noteCheckbox, .noteBlock, .noteLink,
     ]
 
     static func apply(to storage: NSTextStorage) {
@@ -391,6 +395,23 @@ private enum NoteStyle {
                 .backgroundColor: InkNS.hairline.withAlphaComponent(0.55),
             ], range: shift(m.range))
             span(m, marks: 1)
+        }
+        // `[[name]]`: the name in the accent, the brackets hidden, the
+        // target on the characters so a click can follow it.
+        for m in wiki.matches(in: line, range: whole) where free(m.range) {
+            taken.append(m.range)
+            let name = (line as NSString).substring(with: m.range(at: 1))
+            storage.addAttributes([
+                .foregroundColor: AccentNS.text,
+                .noteLink: name,
+            ], range: shift(m.range(at: 1)))
+            span(m, marks: 2)
+        }
+        // `==text==`: Heptabase's highlight, a yellow wash.
+        for m in marked.matches(in: line, range: whole) where free(m.range) {
+            taken.append(m.range)
+            storage.addAttribute(.backgroundColor, value: HighlightNS.yellow, range: shift(m.range(at: 1)))
+            span(m, marks: 2)
         }
         for m in bold.matches(in: line, range: whole) where free(m.range) {
             taken.append(m.range)
@@ -814,7 +835,7 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         let p = convert(event.locationInWindow, from: nil)
-        if checkboxHits().contains(where: { $0.hit.contains(p) }) {
+        if checkboxHits().contains(where: { $0.hit.contains(p) }) || link(at: p) != nil {
             NSCursor.pointingHand.set()
         } else {
             NSCursor.iBeam.set()
@@ -1041,11 +1062,31 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
         super.keyDown(with: event)
     }
 
+    /// Called with a `[[name]]` target when one is clicked.
+    var onOpenLink: ((String) -> Void)?
+
+    private func link(at point: NSPoint) -> String? {
+        guard let storage = textStorage, storage.length > 0, let lm = layoutManager, let tc = textContainer else { return nil }
+        let local = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        var fraction: CGFloat = 0
+        let glyph = lm.glyphIndex(for: local, in: tc, fractionOfDistanceThroughGlyph: &fraction)
+        guard glyph < lm.numberOfGlyphs else { return nil }
+        let rect = lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: tc)
+        guard rect.insetBy(dx: -2, dy: -2).contains(local) else { return nil }
+        let index = lm.characterIndexForGlyph(at: glyph)
+        guard index < storage.length else { return nil }
+        return storage.attribute(.noteLink, at: index, effectiveRange: nil) as? String
+    }
+
     override func mouseDown(with event: NSEvent) {
         closeSlashMenu()
         let p = convert(event.locationInWindow, from: nil)
         if let box = checkboxHits().first(where: { $0.hit.contains(p) }) {
             toggleCheckbox(box.range)
+            return
+        }
+        if event.clickCount == 1, let target = link(at: p), let onOpenLink {
+            onOpenLink(target)
             return
         }
         pointerSelecting = true
@@ -1271,8 +1312,30 @@ fileprivate struct NoteBlock: Identifiable {
         NoteBlock(title: "Code block", symbol: "chevron.left.forwardslash.chevron.right",
                   snippet: "```\n\n```", caretAt: 4),
         NoteBlock(title: "Divider", symbol: "minus", snippet: "---\n"),
+        NoteBlock(title: "Table", symbol: "tablecells",
+                  snippet: "| Column | Column |\n| --- | --- |\n|  |  |\n", caretAt: 2),
+        NoteBlock(title: "Math block", symbol: "function", snippet: "$$\n\n$$", caretAt: 3),
+        NoteBlock(title: "Inline math", symbol: "x.squareroot", snippet: "$$", caretAt: 1),
+        NoteBlock(title: "Highlight", symbol: "highlighter", snippet: "====", caretAt: 2),
+        NoteBlock(title: "Link to a note", symbol: "link", snippet: "[[]]", caretAt: 2),
+        NoteBlock(title: "Date", symbol: "calendar", snippet: NoteBlock.today()),
+        NoteBlock(title: "Now", symbol: "clock", snippet: NoteBlock.now()),
         NoteBlock(title: "Image\u{2026}", symbol: "photo", isImage: true),
     ]
+
+    static func today() -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+
+    static func now() -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        return f.string(from: Date())
+    }
 }
 
 fileprivate final class SlashModel: ObservableObject {
@@ -1348,6 +1411,8 @@ struct MarkdownEditor: NSViewRepresentable {
     var imageBase: URL? = nil
     var imageStem = "image"
     var editable = true
+    /// A `[[name]]` was clicked.
+    var onOpenLink: ((String) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
@@ -1357,6 +1422,7 @@ struct MarkdownEditor: NSViewRepresentable {
         view.imageBase = imageBase
         view.imageStem = imageStem
         view.isEditable = editable
+        view.onOpenLink = onOpenLink
         view.delegate = context.coordinator
         view.allowsUndo = true
         view.isRichText = true
@@ -1397,6 +1463,7 @@ struct MarkdownEditor: NSViewRepresentable {
         view.imageBase = imageBase
         view.imageStem = imageStem
         view.isEditable = editable
+        view.onOpenLink = onOpenLink
         guard NoteMarkdown.markdown(from: view.attributedString()) != text else { return }
         context.coordinator.push(markdown: text)
     }

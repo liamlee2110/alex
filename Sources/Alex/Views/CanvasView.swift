@@ -142,6 +142,7 @@ struct CanvasView: View {
             }
             .onTapGesture {
                 store.select(nil)
+                store.connectSource = nil
                 editingSticky = nil
                 focused = true
             }
@@ -157,6 +158,7 @@ struct CanvasView: View {
             ForEach(groups) { node in
                 let frame = liveFrame(node)
                 GroupNodeView(node: node, selected: store.selection.contains(node.id))
+                    .contextMenu { NodeMenuItems(node: node, store: store) }
                     .overlay {
                         if store.selection == [node.id] { resizeHandle(for: node, vp: vp) }
                     }
@@ -169,6 +171,18 @@ struct CanvasView: View {
                 let frame = liveFrame(node)
                 nodeView(node, zoom: vp.scale)
                     .pulseRing(pulse == node.id)
+                    .overlay {
+                        if store.connectSource == node.id {
+                            RoundedRectangle(cornerRadius: Radius.card)
+                                .stroke(Accent.text, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                                .padding(-6)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if store.selection == [node.id], node.kind == .file, let file = node.file {
+                            appearsBadge(for: file, vp: vp)
+                        }
+                    }
                     .overlay {
                         if store.selection == [node.id] { handles(for: node, vp: vp) }
                     }
@@ -194,6 +208,10 @@ struct CanvasView: View {
     }
 
     private func select(_ node: CanvasNode) {
+        if store.tool == .connect {
+            store.connectClick(node.id)
+            return
+        }
         if NSEvent.modifierFlags.contains(.shift) {
             if store.selection.contains(node.id) { store.selection.remove(node.id) }
             else { store.selection.insert(node.id) }
@@ -223,12 +241,14 @@ struct CanvasView: View {
                 CardNodeView(node: node, path: path, kind: kind, preview: preview,
                              url: vault.url(for: path), missing: !vault.exists(path), selected: selected,
                              tint: store.tint(for: node))
+                    .contextMenu { NodeMenuItems(node: node, store: store) }
                     .onTapGesture(count: 2) { if kind == .canvas { store.openCanvas(at: path) } }
                     .onTapGesture { select(node) }
             }
         case .text:
             StickyNodeView(node: node, selected: selected, editing: editingSticky == node.id,
                            onChange: { text in store.setText(node.id, text) })
+                .contextMenu { NodeMenuItems(node: node, store: store) }
                 .onTapGesture(count: 2) {
                     store.select(node.id)
                     editingSticky = node.id
@@ -236,12 +256,44 @@ struct CanvasView: View {
                 .onTapGesture { select(node) }
         case .link:
             LinkNodeView(node: node, selected: selected)
+                .contextMenu { NodeMenuItems(node: node, store: store) }
                 .onTapGesture { select(node) }
         case .group:
             EmptyView()
         case .other:
             UnknownNodeView(node: node, selected: selected)
                 .onTapGesture { select(node) }
+        }
+    }
+
+    /// Heptabase's "Appears in N whiteboards", above the selected card,
+    /// listing the other canvases that carry this file.
+    @ViewBuilder
+    private func appearsBadge(for file: String, vp: Viewport) -> some View {
+        let others = vault.index().canvases(for: file).filter { $0 != store.canvasPath }
+        if !others.isEmpty {
+            Menu {
+                ForEach(others, id: \.self) { canvas in
+                    Button(VaultPath.parent(of: canvas).isEmpty ? vault.name : VaultPath.parent(of: canvas)) {
+                        store.openCanvas(at: canvas)
+                        if let node = store.node(forFile: file) { store.select(node.id); store.focusRequest = node.id }
+                    }
+                }
+            } label: {
+                Label("Appears in \(others.count + 1) canvases", systemImage: "arrow.up.forward")
+                    .font(Typography.micro)
+                    .foregroundStyle(Accent.text)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: Radius.mark).fill(Accent.wash))
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .scaleEffect(1 / vp.scale, anchor: .bottomTrailing)
+            .offset(y: -8 / vp.scale)
+            .alignmentGuide(.top) { $0[.bottom] }
         }
     }
 

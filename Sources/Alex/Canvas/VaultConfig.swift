@@ -46,15 +46,42 @@ struct ViewRule: Hashable {
     }
 }
 
+/// Where daily notes live: `"journal": {"dir": "journal", "template": "templates/day.md"}`.
+struct JournalConfig: Hashable {
+    var dir = "journal"
+    var template: String?
+
+    static let formatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    func path(for date: Date) -> String {
+        VaultPath.join(dir, Self.formatter.string(from: date) + ".md")
+    }
+
+    static func date(from path: String) -> Date? {
+        let stem = (VaultPath.name(of: path) as NSString).deletingPathExtension
+        return formatter.date(from: String(stem.prefix(10)))
+    }
+}
+
 struct VaultConfig: Hashable {
     static let fileName = "canvas.config.json"
     var views: [ViewRule] = []
+    var journal = JournalConfig()
 
     static func decode(_ data: Data) -> VaultConfig {
         guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let root = JSONValue(any: raw)?.object else { return VaultConfig() }
         var config = VaultConfig()
         config.views = (root["views"]?.array ?? []).compactMap { $0.object.flatMap(ViewRule.init(json:)) }
+        if let journal = root["journal"]?.object {
+            if let dir = journal["dir"]?.string, !dir.isEmpty { config.journal.dir = dir }
+            config.journal.template = journal["template"]?.string
+        }
         return config
     }
 

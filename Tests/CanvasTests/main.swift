@@ -196,6 +196,28 @@ func storeTests() {
     check(store.arrangeByConfig() && store.document.nodes.filter { $0.kind == .group }.count == 2, "arranging again replaces the groups instead of stacking them")
     store.openDirectory("")
 
+    print("\n— Index —")
+    try! "# Alpha\n\nSee [[Gamma]] and [[beta|the other]].\n".write(to: root.appendingPathComponent("alpha.md"), atomically: true, encoding: .utf8)
+    try! "# Gamma\n\nBack to [[Alpha]].\n".write(to: root.appendingPathComponent("notes/gamma.md"), atomically: true, encoding: .utf8)
+    vault.reload()
+    let index = vault.index()
+    check(index.resolve(link: "gamma") == "notes/gamma.md" && index.resolve(link: "ALPHA") == "alpha.md", "links resolve by stem, any case")
+    check(index.resolve(link: "nope") == nil, "an unknown link resolves to nothing")
+    let gammaLinks = index.backlinks(to: "notes/gamma.md")
+    check(gammaLinks.map(\.source) == ["alpha.md"] && gammaLinks.first?.snippet.contains("[[Gamma]]") == true, "backlinks carry the source and the line", "got \(gammaLinks)")
+    check(index.backlinks(to: "alpha.md").map(\.source) == ["notes/gamma.md"], "links go both ways")
+    check(index.canvases(for: "courses/C0.1.md").contains("courses/courses.canvas"), "the index knows which canvases carry a file", "got \(index.canvases(for: "courses/C0.1.md"))")
+
+    print("\n— Journal —")
+    var journal = JournalConfig()
+    journal.dir = "sessions"
+    let day = JournalConfig.formatter.date(from: "2026-09-14")!
+    check(journal.path(for: day) == "sessions/2026-09-14.md", "the day's path")
+    check(JournalConfig.date(from: "sessions/2026-09-14-2.md").map { JournalConfig.formatter.string(from: $0) } == "2026-09-14", "a suffixed entry still reads as its day")
+    check(JournalConfig.date(from: "sessions/notes.md") == nil, "a non-dated file is not an entry")
+    let withJournal = VaultConfig.decode(Data(#"{"journal": {"dir": "sessions", "template": "templates/session.md"}}"#.utf8))
+    check(withJournal.journal.dir == "sessions" && withJournal.journal.template == "templates/session.md", "journal config decodes")
+
     print("\n— Search —")
     check(SearchIndex.score("plan", in: "plan.md plan") ?? -1 > SearchIndex.score("plan", in: "notes/planning-a-trip.md") ?? -1, "a prefix match outranks a later one")
     check(SearchIndex.score("cst", in: "constitution.md") != nil, "subsequence matches")

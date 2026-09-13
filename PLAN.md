@@ -14,6 +14,19 @@ the left, a zoom bar at the bottom right, the breadcrumb in a transparent
 top bar, a white panel with a bordered title row, the editor at 14.5pt with
 24/19/16 headings. Titles use Medium where Heptabase uses Semibold, because
 the design law (§6) allows two weights. The folder stays Alex's own.
+Revision 5 (2026-09-14, asked by Liam): feature parity with Heptabase's
+own screenshots, audited one by one — a PDF reader in the panel (zoom,
+fit, pages, find), text highlights in seven colours written into the PDF,
+"quote onto the desk", `[[wikilinks]]` that open or create notes,
+`==highlights==`, a Backlinks list, an Info block (dates, counts, canvases,
+tags), a stack of panels with `>>` and `+`, an "Appears in N canvases"
+badge, a Journal with a day strip driven by `canvas.config.json`, a
+section menu on the label's `•••` and a right-click menu on cards
+(colour, panel, Finder, connect, remove), connect and import tools in the
+palette, a `•••` menu and a Journal button in the top bar, and the slash
+menu's table, maths, date, time and note-link blocks. Left out on purpose:
+the AI chat panel (Claude works through the door), YouTube cards, Zotero
+and Readwise, sharing and accounts.
 
 ## 0. One paragraph
 

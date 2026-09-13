@@ -28,6 +28,24 @@ final class Vault: ObservableObject {
     @Published private(set) var generation = 0
 
     private var watcher: VaultWatcher?
+    private var indexCache: (generation: Int, index: VaultIndex)?
+
+    /// Backlinks and canvas membership, rebuilt lazily after each change.
+    func index() -> VaultIndex {
+        if let cached = indexCache, cached.generation == generation { return cached.index }
+        let built = root.map(VaultIndex.build(root:)) ?? VaultIndex()
+        indexCache = (generation, built)
+        return built
+    }
+
+    /// File dates for the Info block.
+    func dates(_ path: String) -> (created: Date?, modified: Date?) {
+        guard let url = url(for: path),
+              let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]) else {
+            return (nil, nil)
+        }
+        return (values.creationDate, values.contentModificationDate)
+    }
     /// Absolute paths this process wrote recently, so the watcher's echo of
     /// our own write is not mistaken for someone else's change.
     private var recentWrites: [String: Date] = [:]

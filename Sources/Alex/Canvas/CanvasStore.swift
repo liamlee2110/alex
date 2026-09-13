@@ -31,6 +31,25 @@ final class CanvasStore: ObservableObject {
     /// The ⌘K panel; the menu sets it, the panel clears it.
     @Published var showSearch = false
 
+    enum Tool: Hashable { case select, connect }
+    /// The palette's active tool. In `.connect`, one click picks the source
+    /// and the next picks the target.
+    @Published var tool: Tool = .select
+    @Published var connectSource: String?
+
+    enum PanelTarget: Hashable {
+        case file(String)
+        case journal
+    }
+    /// Panels pinned beside the live one, left to right, like Heptabase's
+    /// tab stack. The live panel follows the selection.
+    @Published var pinnedPanels: [PanelTarget] = []
+    /// The Journal replaces the live panel while on.
+    @Published var showJournal = false
+    @Published var journalDate = Date()
+    /// Whether the right-hand panel is shown at all.
+    @Published var inspectorVisible = Launch.value(after: "--select") != nil
+
     private var previews: [String: (generation: Int, preview: CardPreview)] = [:]
     private var peekCache: [String: (generation: Int, entries: [VaultEntry], count: Int)] = [:]
     private var lastWritten: Data?
@@ -631,6 +650,116 @@ final class CanvasStore: ObservableObject {
             point.x += 40
             point.y += 40
         }
+    }
+
+    // MARK: - Tools and panels
+
+    func setTool(_ next: Tool) {
+        tool = next
+        connectSource = nil
+    }
+
+    /// A click in connect mode: first the source, then the target.
+    func connectClick(_ id: String) {
+        if let source = connectSource {
+            if source != id { connect(source, id) }
+            connectSource = nil
+        } else {
+            connectSource = id
+        }
+    }
+
+    func setColor(_ ids: Set<String>, _ color: String?) {
+        guard !ids.isEmpty else { return }
+        mutate("Colour") { doc in
+            for id in ids {
+                guard var node = doc.node(id) else { continue }
+                node.color = color
+                doc.update(node)
+            }
+        }
+    }
+
+    func setLabel(_ id: String, _ label: String) {
+        guard var node = document.node(id), node.label != label else { return }
+        node.label = label
+        update(node, name: "Rename")
+    }
+
+    func pinLivePanel() {
+        if showJournal {
+            if !pinnedPanels.contains(.journal) { pinnedPanels.append(.journal) }
+            showJournal = false
+        } else if let node = selectedNode, node.kind == .file, let file = node.file {
+            if !pinnedPanels.contains(.file(file)) { pinnedPanels.append(.file(file)) }
+            select(nil)
+        }
+    }
+
+    func unpin(_ target: PanelTarget) {
+        pinnedPanels.removeAll { $0 == target }
+    }
+
+    /// `[[name]]` clicked: open the note it names, creating it beside `from`
+    /// when there is none, the way a wiki does.
+    func openNote(named name: String, from: String?) {
+        if let path = vault.index().resolve(link: name) {
+            reveal(path)
+            return
+        }
+        let clean = name.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty else { return }
+        let dir = from.map(VaultPath.parent(of:)) ?? directory
+        let path = VaultPath.join(dir, clean + ".md")
+        do {
+            try vault.write("# \(clean)\n\n", to: path)
+        } catch {
+            trouble = "Couldn't create \(path): \(error)"
+            return
+        }
+        if dir == directory { place(path) }
+        reveal(path)
+    }
+
+    /// A quotation from a source file, as a sticky on the open canvas beside
+    /// the source's card if it is here.
+    @discardableResult
+    func quote(_ text: String, from source: String, page: Int?) -> CanvasNode {
+        let cite = page.map { "[[\(VaultPath.name(of: source))]] p. \($0)" } ?? "[[\(VaultPath.name(of: source))]]"
+        let body = "> " + text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: "\n> ") + "\n\n— " + cite
+        let size = CGSize(width: 320, height: 200)
+        let near = node(forFile: source)?.frame ?? selectedNode?.frame
+        let origin = Placement.freeSlot(for: size, in: document, near: near)
+        let node = CanvasNode(kind: .text, frame: CGRect(origin: origin, size: size), text: body, color: "3")
+        add(node, name: "Quote")
+        select(node.id)
+        focusRequest = node.id
+        return node
+    }
+
+    // MARK: - Journal
+
+    var journalPath: String { config.journal.path(for: journalDate) }
+
+    /// Days that have an entry, for the strip's dots.
+    func journalDays() -> Set<String> {
+        guard let root = vault.root,
+              let entries = try? VaultListing.entries(in: config.journal.dir, root: root) else { return [] }
+        return Set(entries.compactMap { entry in
+            JournalConfig.date(from: entry.path).map { JournalConfig.formatter.string(from: $0) }
+        })
+    }
+
+    /// Today's (or the chosen day's) note, from the template if there is one.
+    func createJournalEntry() {
+        let path = journalPath
+        guard !vault.exists(path) else { return }
+        var text = "# " + JournalConfig.formatter.string(from: journalDate) + "\n\n"
+        if let template = config.journal.template, let body = try? vault.readText(template) {
+            text = body.replacingOccurrences(of: "{{date}}", with: JournalConfig.formatter.string(from: journalDate))
+        }
+        do { try vault.write(text, to: path) } catch { trouble = "Couldn't create \(path): \(error)" }
     }
 
     // MARK: - Zoom from a menu

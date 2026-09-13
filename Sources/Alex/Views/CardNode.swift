@@ -245,10 +245,12 @@ struct UnknownNodeView: View {
 
 /// A section: the desk tinted with the section's colour inside a thin
 /// border of it, and the label as a solid pill sitting on the top edge,
-/// dark text on colour, the way Heptabase draws it.
+/// dark text on colour, the way Heptabase draws it. The pill's "•••" opens
+/// the section's menu: colour, rename, remove.
 struct GroupNodeView: View {
     let node: CanvasNode
     let selected: Bool
+    @EnvironmentObject private var store: CanvasStore
 
     var body: some View {
         RoundedRectangle(cornerRadius: Radius.mark)
@@ -257,16 +259,63 @@ struct GroupNodeView: View {
                 .strokeBorder(selected ? Accent.text : Hepta.sectionBorder(node.color),
                               lineWidth: selected ? 2 : 1))
             .overlay(alignment: .topLeading) {
-                if let label = node.label, !label.isEmpty {
-                    Text(label)
-                        .font(Typography.sectionLabel)
-                        .foregroundStyle(Hepta.labelText)
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .frame(height: 24)
-                        .background(RoundedRectangle(cornerRadius: Radius.control).fill(Hepta.label(node.color)))
-                        .offset(y: -24)
+                Menu {
+                    NodeMenuItems(node: node, store: store)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(node.label?.isEmpty == false ? node.label! : "Section")
+                            .font(Typography.sectionLabel)
+                            .foregroundStyle(Hepta.labelText)
+                            .lineLimit(1)
+                        Text("•••")
+                            .font(Typography.micro)
+                            .foregroundStyle(Hepta.labelText.opacity(0.55))
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 24)
+                    .background(RoundedRectangle(cornerRadius: Radius.control).fill(Hepta.label(node.color)))
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .offset(y: -24)
+            }
+    }
+}
+
+/// The items every node's menu shares: colour, panel, Finder, connect, remove.
+struct NodeMenuItems: View {
+    let node: CanvasNode
+    @ObservedObject var store: CanvasStore
+
+    var body: some View {
+        Menu("Colour") {
+            ForEach([("None", nil), ("Red", "1"), ("Orange", "2"), ("Yellow", "3"),
+                     ("Green", "4"), ("Blue", "5"), ("Purple", "6")], id: \.0) { name, code in
+                Button {
+                    let ids = store.selection.contains(node.id) ? store.selection : [node.id]
+                    store.setColor(ids, code)
+                } label: {
+                    if node.color == code { Label(name, systemImage: "checkmark") } else { Text(name) }
                 }
             }
+        }
+        if node.kind == .group {
+            Button("Rename…") { store.select(node.id); store.inspectorVisible = true }
+        }
+        Button("Open in the panel") { store.select(node.id); store.inspectorVisible = true }
+        if node.kind == .file, let file = node.file, let url = store.vault.url(for: file) {
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        }
+        Button("Connect from here") {
+            store.setTool(.connect)
+            store.connectSource = node.id
+        }
+        Divider()
+        Button("Remove from canvas") {
+            let ids = store.selection.contains(node.id) ? store.selection : [node.id]
+            store.remove(ids)
+        }
     }
 }

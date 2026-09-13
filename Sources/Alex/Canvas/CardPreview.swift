@@ -57,15 +57,23 @@ struct CardPreview: Hashable {
                 shown = shown.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty }.joined(separator: " · ")
             }
-            lines.append(String(shown.prefix(140)))
+            lines.append(String(Self.plain(shown).prefix(140)))
             if lines.count >= 8 { break }
         }
         if !sawHeading, let t = fm["title"]?.display, !t.isEmpty { title = t }
+        title = Self.plain(title)
 
         var chips: [Chip] = []
         for key in chipKeys where chips.count < maxChips {
             if let v = fm[key], !v.isEmpty { chips.append(Chip(key: key, value: v.display)) }
         }
         return CardPreview(title: title, lines: lines, chips: chips, frontmatter: fm)
+    }
+
+    /// The inline marks a card need not show: `==`, `[[ ]]`, `**`, backticks.
+    static func plain(_ line: String) -> String {
+        var out = line
+        for mark in ["==", "[[", "]]", "**", "`", "__"] { out = out.replacingOccurrences(of: mark, with: "") }
+        return out
     }
 }

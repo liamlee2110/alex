@@ -44,7 +44,7 @@ run "Design law" design_law
 # Pure Foundation files only: nothing here may import SwiftUI or AppKit.
 MODELS=(Sources/Alex/Vault/VaultPath.swift Sources/Alex/Vault/VaultEntry.swift)
 # The canvas suite adds the stores: Foundation, Combine and CoreServices, still no AppKit.
-CANVAS=("${MODELS[@]}" Sources/Alex/Vault/Vault.swift Sources/Alex/Vault/VaultWatcher.swift
+CANVAS=("${MODELS[@]}" Sources/Alex/Vault/Vault.swift Sources/Alex/Vault/VaultWatcher.swift Sources/Alex/Vault/VaultIndex.swift
         Sources/Alex/Canvas/JSONValue.swift Sources/Alex/Canvas/CanvasFile.swift
         Sources/Alex/Canvas/Frontmatter.swift Sources/Alex/Canvas/Placement.swift
         Sources/Alex/Canvas/Viewport.swift Sources/Alex/Canvas/CardPreview.swift

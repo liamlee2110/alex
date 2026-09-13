@@ -32,14 +32,19 @@ struct BreadcrumbBar: View {
 }
 
 /// The vertical tool palette at the left edge: a white rounded strip with
-/// one icon per verb, the active one blue.
+/// one icon per verb, the active tool blue. Heptabase's row: select, card,
+/// import, arrow, text, section, and more.
 struct ToolPalette: View {
     @ObservedObject var store: CanvasStore
 
     var body: some View {
         VStack(spacing: 4) {
-            tool("cursorarrow", "Select", active: true) { store.select(nil) }
+            tool("cursorarrow", "Select", active: store.tool == .select) { store.setTool(.select) }
             tool("doc.text", "New note") { store.newNote() }
+            tool("square.and.arrow.down", "Import files…") { importFiles() }
+            tool("arrow.up.right", "Connect: click a card, then another", active: store.tool == .connect) {
+                store.setTool(store.tool == .connect ? .select : .connect)
+            }
             tool("textformat", "New sticky note") { store.addSticky(at: nil) }
             tool("rectangle.dashed", "Group selection") { store.groupSelection() }
             tool("magnifyingglass", "Find in vault") { store.showSearch = true }
@@ -50,6 +55,18 @@ struct ToolPalette: View {
         .overlay(RoundedRectangle(cornerRadius: Radius.well).strokeBorder(Ink.hairline, lineWidth: 1))
         .elevation(.raised)
         .padding(.leading, 12)
+    }
+
+    private func importFiles() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Import"
+        panel.message = "Files from outside the vault are copied into the open folder."
+        guard panel.runModal() == .OK else { return }
+        let centre = store.viewport.toWorld(CGPoint(x: store.viewSize.width / 2, y: store.viewSize.height / 2))
+        store.importFiles(panel.urls, at: centre)
     }
 
     private func tool(_ symbol: String, _ help: String, active: Bool = false,
@@ -63,6 +80,33 @@ struct ToolPalette: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+}
+
+/// The top bar's right cluster: the canvas menu, the Journal, the panel.
+struct TopBarMenu: View {
+    @ObservedObject var store: CanvasStore
+
+    var body: some View {
+        Menu {
+            Button("Arrange by frontmatter") { store.arrangeByConfig() }
+            Button("Place everything not yet placed") { store.placeAllUnplaced() }
+            Divider()
+            Button("Fit to contents") { store.fit() }
+            Button("Actual size") { store.actualSize() }
+            Divider()
+            Button("Reveal canvas file in Finder") {
+                if let url = store.vault.url(for: store.canvasPath) {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            }
+            Button("Settings…") {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        .help("Canvas")
     }
 }
 

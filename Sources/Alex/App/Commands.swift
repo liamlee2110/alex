@@ -36,6 +36,19 @@ struct CanvasCommands: Commands {
             Button("Group selection") { store?.groupSelection() }
                 .keyboardShortcut("g", modifiers: .command)
                 .disabled(store == nil)
+            Button("Connect tool") { store?.setTool(store?.tool == .connect ? .select : .connect) }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(store == nil)
+            Button("Keep this panel open") { store?.pinLivePanel() }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(store == nil)
+            Button("Journal") {
+                guard let store else { return }
+                store.showJournal.toggle()
+                if store.showJournal { store.inspectorVisible = true }
+            }
+            .keyboardShortcut("j", modifiers: .command)
+            .disabled(store == nil)
             Button("Remove from canvas") { if let store { store.remove(store.selection) } }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(store == nil)

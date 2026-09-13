@@ -70,13 +70,47 @@ where things stand. It is generic enough for any folder of notes.
 - `groupBy`: a key to arrange a directory into labelled groups
   (⌘⇧A, "Arrange by frontmatter"). Nine course blocks become nine bands.
 
+**Reading**
+
+- A PDF opens in the panel with its own reader: zoom, fit to width, page
+  by page, find. Select text and a row appears: seven highlighter colours,
+  copy, and **Quote onto the desk**, which puts the passage on the canvas
+  as a card linked back to the page. Highlights are written into the PDF
+  itself, so Preview and git see them.
+- Notes link to each other with `[[name]]`: the link is blue, a click opens
+  the note (and creates it if it does not exist), and the note's panel
+  lists its **Backlinks** with the line that linked. `==text==` is a
+  highlight. The slash menu adds tables, maths blocks, inline maths,
+  dates, times and note links to Donna's headings, lists, checklists,
+  quotes, code and images.
+- Under every note, an **Info** block: created, updated, word and
+  character counts, the canvases it appears on, its tags.
+- The panel is a stack: `+` keeps the current panel open and starts
+  another, so a PDF can sit beside the note you are writing. A card on
+  several canvases shows **Appears in N canvases** above it, with a jump
+  to each.
+
+**The Journal**
+
+- The calendar button (⌘J) opens a note per day: a strip of days with a
+  dot on each that has an entry, the day's note beneath, and a button to
+  start one from the vault's template. Which directory holds the days is
+  in `canvas.config.json`; the robotics vault points it at `sessions/`.
+
 **Finding things**
 
 - ⌘K finds a file by path or title and pans to its card. The sidebar is the
   plain tree. Files in a directory that are not on its canvas wait in a
   tray in the panel; drag them out or place them with a click.
+- Right-click any card or section for its colour, the panel, Finder,
+  a connection from it, or removal. The section label's `•••` opens the
+  same menu. The palette's arrow is the connect tool: click a card, then
+  another; its import tool copies files from outside the vault into the
+  open folder.
 
 <p align="center"><img src="docs/cards.png" width="820" alt="White cards inside two labelled sections, sticky notes in yellow and blue, a link card, and edges with labels"></p>
+
+<p align="center"><img src="docs/reader.png" width="820" alt="A PDF pinned in the panel stack beside a note with wikilinks, a highlight, an Info block and backlinks"></p>
 
 ## Claude Code and the door
 
@@ -152,8 +186,11 @@ note), and files you or the door create on purpose. Nothing else. The
 | | |
 |---|---|
 | ⌘K | Find in vault |
+| ⌘J | The Journal |
 | ⌘N / ⌘⇧N | New note / new sticky note |
 | ⌘G | Group selection |
+| ⌘⇧C | Connect tool |
+| ⌘⇧P | Keep this panel open |
 | ⌘⌫ or ⌫ | Remove from canvas (the file stays) |
 | ⌘⇧A | Arrange by frontmatter |
 | ⌘= ⌘- ⌘0 ⌘1 | Zoom in, out, actual size, fit |

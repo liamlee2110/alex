@@ -38,6 +38,12 @@ gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
 
 ## Sharp edges found here
 
+- **`.contextMenu` around a view with `rotation3DEffect` draws that view
+  at the container's origin.** The folder's back and cover, both tilted
+  on a hinge, rendered at the canvas's top-left while their peeks and the
+  selection ring stayed put. Cards, stickies and links carry the menu;
+  folders do not.
+
 - **Every dev flag takes a value.** AppKit reads `-key value` pairs off the
   command line as defaults overrides. A bare `--door` swallowed the
   `--snapshot` after it and the window never opened, with no error anywhere.

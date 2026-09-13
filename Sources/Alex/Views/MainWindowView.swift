@@ -6,7 +6,6 @@ struct MainWindowView: View {
     @ObservedObject private var store: CanvasStore
     /// `--select <vault path>` preselects a file at launch, for snapshots.
     @State private var sidebarSelection: String? = Launch.value(after: "--select")
-    @State private var showInspector = Launch.value(after: "--select") != nil
     @State private var columns: NavigationSplitViewVisibility = .all
 
     init(model: AppModel) {
@@ -35,9 +34,11 @@ struct MainWindowView: View {
                         }
                     }
                     .ignoresSafeArea(.container, edges: .top)
-                    .inspector(isPresented: $showInspector) {
+                    .inspector(isPresented: $store.inspectorVisible) {
                         InspectorView(store: store)
-                            .inspectorColumnWidth(min: 340, ideal: 560, max: 960)
+                            .inspectorColumnWidth(min: 340,
+                                                  ideal: 560 + 400 * CGFloat(store.pinnedPanels.count),
+                                                  max: 1400)
                     }
                     .toolbar(removing: .title)
                     .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -53,10 +54,18 @@ struct MainWindowView: View {
                             BreadcrumbBar(store: store)
                         }
                         ToolbarItemGroup(placement: .primaryAction) {
+                            TopBarMenu(store: store)
                             Button {
-                                showInspector.toggle()
+                                store.showJournal.toggle()
+                                if store.showJournal { store.inspectorVisible = true }
                             } label: {
-                                Label("Inspector", systemImage: "sidebar.trailing")
+                                Label("Journal", systemImage: "calendar")
+                            }
+                            .help("The Journal: a note per day")
+                            Button {
+                                store.inspectorVisible.toggle()
+                            } label: {
+                                Label("Panel", systemImage: "sidebar.trailing")
                             }
                             .keyboardShortcut("i", modifiers: [.command, .option])
                             .help("Show or hide the panel")
@@ -70,7 +79,10 @@ struct MainWindowView: View {
                 if let path { store.reveal(path) }
             }
             .onChange(of: store.selection) { _, selection in
-                if !selection.isEmpty { showInspector = true }
+                if !selection.isEmpty {
+                    store.inspectorVisible = true
+                    store.showJournal = false
+                }
             }
             .task {
                 if let path = sidebarSelection { store.reveal(path) }
@@ -79,6 +91,19 @@ struct MainWindowView: View {
                 if let dir = Launch.value(after: "--arrange") {
                     store.openDirectory(dir)
                     store.arrangeByConfig()
+                }
+                // `--journal on`: open the Journal panel, for a scripted check.
+                if Launch.value(after: "--journal") == "on" {
+                    store.showJournal = true
+                    store.inspectorVisible = true
+                }
+                if let day = Launch.value(after: "--day"), let date = JournalConfig.formatter.date(from: day) {
+                    store.journalDate = date
+                }
+                // `--pin <vault path>`: a pinned panel beside the live one.
+                if let pin = Launch.value(after: "--pin") {
+                    store.pinnedPanels = [.file(pin)]
+                    store.inspectorVisible = true
                 }
             }
         }

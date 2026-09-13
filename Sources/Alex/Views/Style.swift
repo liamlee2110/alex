@@ -289,6 +289,28 @@ enum Hepta {
     static let labelText = Color(light: "2E2E2E", dark: "1E1E1E")
 }
 
+/// Heptabase's highlighter row: yellow, red, orange, green, blue, purple,
+/// pink. Used on PDF highlights and `==marked==` text.
+enum Highlight {
+    static let names = ["yellow", "red", "orange", "green", "blue", "purple", "pink"]
+    static func color(_ name: String) -> Color { Color(nsColor: HighlightNS.color(name)) }
+}
+
+enum HighlightNS {
+    static let yellow = NSColor(srgbRed: 0.98, green: 0.90, blue: 0.45, alpha: 0.55)
+    static func color(_ name: String) -> NSColor {
+        switch name {
+        case "red": return NSColor(srgbRed: 0.97, green: 0.47, blue: 0.42, alpha: 0.6)
+        case "orange": return NSColor(srgbRed: 0.98, green: 0.63, blue: 0.29, alpha: 0.6)
+        case "green": return NSColor(srgbRed: 0.19, green: 0.84, blue: 0.40, alpha: 0.55)
+        case "blue": return NSColor(srgbRed: 0.36, green: 0.64, blue: 0.85, alpha: 0.6)
+        case "purple": return NSColor(srgbRed: 0.69, green: 0.55, blue: 0.94, alpha: 0.6)
+        case "pink": return NSColor(srgbRed: 0.95, green: 0.42, blue: 0.71, alpha: 0.6)
+        default: return yellow
+        }
+    }
+}
+
 /// The stocks a folder can be cut from; a directory with no colour of its
 /// own takes one by name.
 enum Stock {
