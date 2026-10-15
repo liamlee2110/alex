@@ -110,4 +110,39 @@ enum Glyph: String, CaseIterable, Sendable {
     case textAlignStart = "text-align-start"
     case textAlignCenter = "text-align-center"
     case textAlignEnd = "text-align-end"
+
+    // A canvas's own icon (revision 54), picked in the sidebar: the
+    // default first, then subjects. `layoutDashboard`, `calendar`,
+    // `music`, `camera`, `codeXml`, `globe` and `folder` are above.
+    case star
+    case heart
+    case flag
+    case bookmark
+    case lightbulb
+    case brain
+    case bookOpen = "book-open"
+    case graduationCap = "graduation-cap"
+    case flaskConical = "flask-conical"
+    case rocket
+    case target
+    case compass
+    case map
+    case briefcase
+    case palette
+    case penTool = "pen-tool"
+    case cpu
+    case bot
+    case leaf
+    case sparkles
+    case coffee
+    case users
+
+    /// The icons a canvas can wear, in the picker's order.
+    static let canvasIcons: [Glyph] = [
+        .layoutDashboard, .star, .heart, .flag, .bookmark, .lightbulb,
+        .brain, .bookOpen, .graduationCap, .flaskConical, .rocket, .target,
+        .compass, .map, .briefcase, .calendar, .palette, .penTool,
+        .codeXml, .cpu, .bot, .globe, .leaf, .sparkles,
+        .music, .camera, .coffee, .users, .folder, .fileText,
+    ]
 }

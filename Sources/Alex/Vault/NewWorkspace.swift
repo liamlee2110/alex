@@ -1,14 +1,14 @@
 import Foundation
 
-/// A workspace made from inside Alex (PLAN.md, revision 31): a new folder
-/// beside the open one, seeded with the starter vault the repository keeps
-/// in `vault-template/` and the app carries in its resources. Home is
-/// named after the folder, as every vault's is, so the template's
-/// `vault-template.canvas` is renamed and the notes that name it follow.
-/// The folder is put together in a scratch folder on the same volume and
-/// renamed into place, so nobody watching the parent sees half of it (D2).
+/// A workspace made from inside Alex (PLAN.md, revisions 31 and 54): a
+/// new folder beside the open one, holding only what connects it to
+/// Claude Code — the starter vault's dot files (`.mcp.json`,
+/// `.gitignore`) — and nothing to read: no notes and no canvas, so the
+/// desk asks for the first canvas. The folder is put together in a
+/// scratch folder on the same volume and renamed into place, so nobody
+/// watching the parent sees half of it (D2).
 enum NewWorkspace {
-    /// The name the template's own folder has, and so its Home's.
+    /// The name the template's own folder has.
     static let templateName = "vault-template"
 
     enum Failure: Error, Equatable, CustomStringConvertible {
@@ -49,20 +49,12 @@ enum NewWorkspace {
         defer { try? fm.removeItem(at: scratch) }
         let staged = scratch.appendingPathComponent(name, isDirectory: true)
 
-        if let template, fm.fileExists(atPath: template.path) {
-            try fm.copyItem(at: template, to: staged)
-            let home = staged.appendingPathComponent(templateName + ".canvas")
-            if fm.fileExists(atPath: home.path) {
-                try fm.moveItem(at: home, to: staged.appendingPathComponent(name + ".canvas"))
+        try fm.createDirectory(at: staged, withIntermediateDirectories: false)
+        if let template, let names = try? fm.contentsOfDirectory(atPath: template.path) {
+            for name in names where name.hasPrefix(".") && name != ".DS_Store" {
+                try fm.copyItem(at: template.appendingPathComponent(name),
+                                to: staged.appendingPathComponent(name))
             }
-            for file in ["CLAUDE.md", "README.md"] {
-                let url = staged.appendingPathComponent(file)
-                guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-                let renamed = text.replacingOccurrences(of: templateName + ".canvas", with: name + ".canvas")
-                if renamed != text { try renamed.write(to: url, atomically: true, encoding: .utf8) }
-            }
-        } else {
-            try fm.createDirectory(at: staged, withIntermediateDirectories: false)
         }
         // A rename refuses to replace what is there: nothing is lost if
         // another folder of that name appeared meanwhile.

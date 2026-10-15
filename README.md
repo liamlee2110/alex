@@ -2,7 +2,7 @@
 
 <p align="center">
   A native macOS canvas over a folder of plain files, with a door for Claude Code.<br>
-  Folders are sections, notes are cards, and the files are the only truth.
+  Canvases you make, notes as cards, and the files are the only truth.
 </p>
 
 <p align="center">
@@ -15,17 +15,15 @@
 
 ---
 
-<p align="center"><img src="docs/home.png" width="820" alt="The Home canvas of a vault: paper cards, and a coloured section for each folder holding its notes"></p>
+<p align="center"><img src="docs/home.png" width="820" alt="A canvas: paper cards, and coloured sections holding notes"></p>
 
 ## What it is
 
-Point Alex at a folder (a *vault*) and it shows the whole folder as one
-desk, Home. Each file is a card; each directory is a labelled section
-holding its files' cards and its subdirectories' sections. Cards can be
-moved, grouped, connected and opened in a side panel, and a section is
-its folder: drag a card into another folder's section and the file moves
-there on disk; rename a section and the folder is renamed. A file that
-appears in the vault lands in its folder's section by itself. Everything
+Point Alex at a folder (a *vault*) and lay its files out on canvases you
+make, each a desk for one subject. A folder with no canvas yet opens on
+an empty desk that asks for the first one's name. Each file you place is
+a card; cards can be moved, grouped, connected and opened in a side
+panel, and a file is on a canvas only where you put it. Everything
 Alex knows is in the folder: the layout is a `.canvas` file in the open
 [JSON Canvas](https://jsoncanvas.org) format, notes are Markdown, images are
 images. Git, Obsidian, a text editor and Claude read and write the same
@@ -113,16 +111,9 @@ where things stand. It is generic enough for any folder of notes.
   A paste lands a step down and right, or mid-view on another canvas; a
   picture already there is copied to a file of its own, and a note's card
   is not doubled, since a file has one card on a canvas.
-- Every folder is a section on Home, its name after a folder glyph on the
-  label, in the colour its glyph has in the sidebar; a subfolder is a
-  section inside it. A new file takes the first free place in its
-  folder's section, which grows to hold it; an empty folder comes onto
-  Home with its first file. Drag a card or a section into another folder's
-  section and the file or folder moves there on disk (onto the bare desk
-  moves it to the vault's root); ⌘Z moves it back, and a name already
-  taken there refuses the drag. Take a card or section off Home and it
-  stays in the vault: ⌘K opens it again, and **Place on canvas** or the
-  canvas menu's **Place everything not yet placed** brings it back.
+- A card taken off a canvas stays in the vault: ⌘K opens it again, and
+  **Place on canvas** or the canvas menu's **Place everything not yet
+  placed** brings it back.
 - A card's file opens in the panel: Markdown renders in place and edits in
   place (headings without the `#`, lists that behave, checklists you tick,
   pasted images stored beside the note), PDFs in PDFKit, HTML in a web view
@@ -175,8 +166,12 @@ where things stand. It is generic enough for any folder of notes.
 
 - The sidebar is Figma's, a card floating over the desk's left that
   holds all the window's chrome, the traffic lights included: a head
-  row, then **Canvases** — Home and every other canvas, with find, a new
-  canvas and the canvas's `•••` — and the workspace at the foot. There
+  row, then **Canvases** — every canvas, with find, a new canvas and the
+  canvas's `•••` — and the workspace at the foot. Double-click a canvas's
+  row, or pick **Rename** from its right-click menu or the `•••`, to
+  rename it (the `.canvas` file is renamed); **Icon and colour…** picks
+  its glyph and one of six colours, kept in the file as `x-icon` and
+  `x-color`. There
   is no file tree: the desk is where files are, and ⌘K finds any of
   them. The toggle beside the traffic lights, or ⌘\, folds the sidebar
   into its head — the lights and the toggle, nothing else, the way
@@ -193,7 +188,8 @@ where things stand. It is generic enough for any folder of notes.
   swipe two fingers across the sidebar, and the sidebar slides to that
   vault the way Arc slides between spaces. The same menu makes a new
   workspace (**New workspace…**: type a name, and a folder of that name
-  appears beside the open one, started from [`vault-template/`](vault-template/)),
+  appears beside the open one, empty but for the `.mcp.json` that
+  connects the door),
   takes one off the list with the × at its row's end (nothing on disk
   changes) and opens Settings (⌘,), a sheet over the desk; a folder you
   already have opens with ⌘O.
@@ -203,8 +199,8 @@ where things stand. It is generic enough for any folder of notes.
 - Right-click any card or section for the panel, Finder,
   or removal. The section label's `•••` opens the
   same menu. The palette's Add menu copies files from outside the vault
-  into the vault; a file dropped on the desk from Finder is copied into
-  the folder whose section it lands in.
+  into the vault; a file dropped on the desk from Finder is copied in
+  beside the canvas.
 - **Connecting blocks**, as in FigJam and Excalidraw: select a card, sticky
   or shape, bring the pointer to one of its sides for its dot and drag that
   onto another, or draw an
@@ -236,15 +232,15 @@ Eight tools, all thin wrappers over the file format:
 | `get_context` | The vault root, the open directory and canvas, the selected cards with their file paths or text, the viewport, the unplaced files |
 | `read_canvas` | A canvas as JSON Canvas 1.0 |
 | `add_card` | A sticky note, a file card or a link, placed beside a node or the selection if no coordinates are given |
-| `write_artifact` | A file into the vault (text or base64), directories created, placed as a card in its folder's section on Home; refuses to overwrite without `overwrite: true` |
+| `write_artifact` | A file into the vault (text or base64), directories created, placed as a card on the open canvas (or the one named); refuses to overwrite without `overwrite: true` |
 | `connect` | An edge, with an optional label |
 | `update_card` | Text, colour, label, position, size |
 | `focus` | Opens a canvas in the app and pans to a node |
 | `list_files` | Paths under a directory, with a glob |
 
 A session in the robotics vault ends with the coach writing the artifacts
-through `write_artifact`, so a new plot lands in the right folder and in
-that folder's section on Home, and calling `focus`, so the app pans to it.
+through `write_artifact`, so a new plot lands in the right folder and on
+the open canvas, and calling `focus`, so the app pans to it.
 
 <p align="center"><img src="docs/door.png" width="820" alt="A plot written through the door, placed on a canvas and focused"></p>
 
@@ -282,15 +278,14 @@ the workspaces at the sidebar's foot until you open it from there.
 
 Any folder works. [`vault-template/`](vault-template/) is a starter with a
 `CLAUDE.md` that tells Claude Code how the vault is shaped, the `.mcp.json`
-that connects the door, an example `canvas.config.json`, and one note.
+that connects the door, and an example `canvas.config.json`.
 Copy it, `git init`, open it in Alex and in Claude Code.
 
-Alex writes into a vault only these things: `<vaultname>.canvas` at the
-root (Home's layout), images pasted into notes (beside the note) or onto a
-canvas (beside the canvas, as `Pasted image <date> <time>.png`), files
-you or the door create on purpose, and the moves and renames you make by
-dragging a card or renaming a folder's section. Nothing else. The
-`.canvas` file is worth committing: it is the map.
+Alex writes into a vault only these things: the `.canvas` files you
+make and rename, images pasted into notes (beside the note) or onto a
+canvas (beside the canvas, as `Pasted image <date> <time>.png`), and
+files you or the door create on purpose. Nothing else. The `.canvas`
+files are worth committing: they are the map.
 
 ## Keyboard
 
@@ -315,7 +310,6 @@ dragging a card or renaming a folder's section. Nothing else. The
 | ⌘⌫ or ⌫ | Remove from canvas (the file stays) |
 | ⌘⇧A | Arrange by frontmatter |
 | ⌘= ⌘- ⌘0 ⌘1 | Zoom in, out, actual size, fit |
-| ⌘[ | Back to Home |
 | ⌘⌥I | Show or hide the panel |
 | ⌘O | Open another vault |
 | ⌘Z / ⌘⇧Z | Undo / redo |
@@ -337,9 +331,7 @@ it, the palette at its foot, and the detail sheet floating at its right. The col
 neutral grey with black type, and one blue for selection, links, the
 caret, the door and the tool in hand. The chrome says three things in
 three shapes: where you are is a grey square, the tool in hand and the
-workspace's mark a solid blue one, and a button a capsule. A folder is a Heptabase section too,
-since revision 20; its colours come from Alex's own folder stocks,
-converted from OKLCH by hand.
+workspace's mark a solid blue one, and a button a capsule.
 The plan, every decision and its reasons, and the milestones are in
 [PLAN.md](PLAN.md); the rules and the sharp edges are in
 [CLAUDE.md](CLAUDE.md); how to work on it is in

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The shell (PLAN.md, revisions 21 and 37), the shape of Figma's. No top
 /// bar and no toolbar: the desk runs the window's full height, and every
@@ -125,12 +126,17 @@ struct MainWindowView: View {
                 return [meta.title, meta.author, meta.provider].compactMap { $0 }
             }
             if let path = launchSelection { store.reveal(path) }
-            // `--arrange <dir>`: look at a folder's section and lay it out
-            // by its rule, for a scripted check of canvas.config.json.
-            if let dir = Launch.value(after: "--arrange") {
-                store.openDirectory(dir)
+            // `--arrange <canvas>`: open a canvas and lay it out by its
+            // rule, for a scripted check of canvas.config.json.
+            if let canvas = Launch.value(after: "--arrange") {
+                store.openCanvas(at: canvas)
                 store.arrangeByConfig()
             }
+            // `--rename <canvas>` and `--canvas-look <canvas>`: a canvas's
+            // row as its name field, or its icon and colour picker open,
+            // for a snapshot (revision 54).
+            if let path = Launch.value(after: "--rename") { store.renaming = path }
+            if let path = Launch.value(after: "--canvas-look") { store.lookPicking = path }
             // `--link-prompt on`: the palette's link prompt open, for a snapshot.
             if Launch.value(after: "--link-prompt") == "on" {
                 store.showLinkPrompt = true
@@ -173,7 +179,13 @@ struct MainWindowView: View {
                 bottom: CanvasStore.paletteRoom,
                 trailing: store.inspectorVisible ? sheetWidth + 2 * Shell.gutter : 0)
             ZStack(alignment: .topLeading) {
-                CanvasView(store: store)
+                if store.isOpen {
+                    CanvasView(store: store)
+                } else {
+                    FirstCanvasView(store: store)
+                        .padding(EdgeInsets(top: 0, leading: insets.leading, bottom: 0, trailing: insets.trailing))
+                        .background(Ink.ground)
+                }
                 Sidebar(store: store, door: model.door, shown: $sidebarVisible)
                     .frame(width: sidebarVisible ? sidebarWidth : Shell.sidebarFolded,
                            height: sidebarVisible ? max(geo.size.height - 2 * Shell.gutter, Shell.headRow) : Shell.headRow,
@@ -245,7 +257,7 @@ struct WelcomeView: View {
                 Text(naming ? "Name your workspace" : "Welcome to Alex")
                     .font(Typography.display)
                 Text(naming
-                     ? "It starts with a few example cards to show you around. You can rename it later."
+                     ? "It starts empty, ready for your first canvas. You can rename it later."
                      : "Lay out your notes, ideas and files as cards on a desk. Everything is kept as ordinary files on your Mac.")
                     .font(Typography.body)
                     .foregroundStyle(Ink.muted)
@@ -272,7 +284,7 @@ struct WelcomeView: View {
     private var choices: some View {
         HStack(spacing: Space.m) {
             WelcomeChoice(art: .cards, title: "Start a new workspace",
-                          detail: "A fresh desk with a few example cards.") { startNaming() }
+                          detail: "An empty folder for your canvases and notes.") { startNaming() }
             WelcomeChoice(art: .folders, title: "Open a folder",
                           detail: "Use notes you already have. Your files stay where they are.") {
                 VaultPicker.choose(into: vault)
@@ -365,5 +377,77 @@ private struct WelcomeChoice: View {
         .focusRing(cornerRadius: Radius.card)
         .onHover { hovering = $0 }
         .animation(Motion.quick, value: hovering)
+    }
+}
+
+/// A workspace with no canvas (revision 54): the desk asks for the first
+/// one. The mascot holding a blank card, a line on what a canvas is, and
+/// the name already typed and selected, so a name and ↩ make it. Nothing
+/// else on the desk — no palette, no zoom bar — until there is one.
+struct FirstCanvasView: View {
+    @ObservedObject var store: CanvasStore
+    @State private var name = FirstCanvasView.suggestedName
+    @State private var failure: String?
+    @FocusState private var focused: Bool
+
+    static let suggestedName = "Untitled canvas"
+
+    private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(spacing: Space.l) {
+            ArtworkImage(art: .emptyCanvas, side: Art.hero)
+            VStack(spacing: Space.s) {
+                Text("Create your first canvas")
+                    .font(Typography.display)
+                Text("A canvas is a desk for one subject: notes, files, links and shapes laid out side by side.")
+                    .font(Typography.body)
+                    .foregroundStyle(Ink.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(spacing: Space.m) {
+                TextField("Canvas name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .font(Typography.body)
+                    .multilineTextAlignment(.leading)
+                    .focused($focused)
+                    .onSubmit(create)
+                    .onChange(of: name) { _, _ in failure = nil }
+                    .accessibilityLabel("Canvas name")
+                Button("Create canvas") { create() }
+                    .buttonStyle(.solid)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(trimmed.isEmpty)
+                if let failure {
+                    Text(failure)
+                        .font(Typography.meta)
+                        .foregroundStyle(Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 320)
+            .padding(.top, Space.s)
+        }
+        .multilineTextAlignment(.center)
+        .frame(width: 440)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            name = Self.suggestedName
+            DispatchQueue.main.async {
+                focused = true
+                // The suggestion selected whole, so typing replaces it.
+                NSApp.keyWindow?.firstResponder.flatMap { $0 as? NSText }?.selectAll(nil)
+            }
+        }
+    }
+
+    private func create() {
+        guard !trimmed.isEmpty else { return }
+        switch CanvasStore.validCanvasName(name) {
+        case .failure(let why):
+            failure = why.description
+        case .success:
+            if store.newCanvas(named: name) == nil { failure = store.trouble }
+        }
     }
 }

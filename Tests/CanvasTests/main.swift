@@ -144,15 +144,24 @@ func storeTests() {
     check(defaults.stringArray(forKey: Vault.workspacesKey) == [root.path] && defaults.string(forKey: Vault.defaultsKey) == root.path,
           "but does not remember it", "got \(String(describing: defaults.stringArray(forKey: Vault.workspacesKey)))")
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-    check(store.isOpen, "store opened the vault root")
-    check(fm.fileExists(atPath: root.appendingPathComponent("vault.canvas").path), "first visit wrote vault.canvas")
-    check(store.isHome && store.document.nodes.count == 3, "Home holds the note, the folder's section and its file",
-          "got \(store.document.nodes.map { $0.file ?? $0.label ?? "" })")
-    check(store.unplaced.isEmpty, "nothing unplaced after auto-layout")
-    let folder = Folders.section(for: "notes", in: store.document)!
-    let alpha = store.document.nodes.first { $0.file == "alpha.md" }!
-    check(folder.frame.contains(store.node(forFile: "notes/inner.md")!.frame), "the folder's file sits in its section")
-    check(!folder.frame.intersects(alpha.frame), "and the root's file sits outside it")
+    print("\n— No Home: the first canvas (revision 54) —")
+    check(!store.isOpen && store.canvasPath.isEmpty && store.canvases.isEmpty,
+          "a vault with no canvas opens on no canvas", "got \(store.canvasPath) \(store.canvases)")
+    check(!fm.fileExists(atPath: root.appendingPathComponent("vault.canvas").path), "and none is made for it")
+    store.newNote()
+    check(!fm.fileExists(atPath: root.appendingPathComponent("Untitled.md").path), "with no canvas a new note waits")
+    check(store.newCanvas(named: "  ") == nil && store.newCanvas(named: "a/b") == nil && !store.isOpen,
+          "a first canvas needs a name it can take")
+    check(store.newCanvas(named: "vault") == "vault.canvas" && store.isOpen && store.canvasPath == "vault.canvas"
+          && fm.fileExists(atPath: root.appendingPathComponent("vault.canvas").path),
+          "the first canvas is written under its name and opened")
+    check(store.renaming == nil, "a named canvas is not asked its name again")
+    check(store.document.nodes.isEmpty && store.unplaced.map(\.path) == ["alpha.md"],
+          "it starts empty, the root's file waiting beside it", "got \(store.unplaced.map(\.path))")
+    let alpha = store.place("alpha.md")
+    store.place("notes/inner.md")
+    let folder = store.add(CanvasNode(kind: .group, frame: CGRect(x: -400, y: -400, width: 300, height: 200), label: "notes"))
+    check(store.document.nodes.count == 3 && store.unplaced.isEmpty, "a canvas holds what was placed on it")
 
     print("\n— Recents —")
     check(store.recents.isEmpty, "a fresh vault has no recents")
@@ -162,7 +171,6 @@ func storeTests() {
     check(store.recents == ["alpha.md"], "a folder picked is not", "got \(store.recents)")
     store.reveal("notes/inner.md")
     check(store.recents == ["notes/inner.md", "alpha.md"], "a file revealed goes to the head", "got \(store.recents)")
-    store.openDirectory("")
     store.select(alpha.id)
     check(store.recents == ["alpha.md", "notes/inner.md"], "picked again, it moves to the head, once", "got \(store.recents)")
     check(store.displayTitle(for: "alpha.md") == "Alpha" && store.displayTitle(for: "notes/x.py") == "x.py",
@@ -284,31 +292,52 @@ func storeTests() {
     try! FileManager.default.removeItem(at: root.appendingPathComponent("canvas.config.json"))
     store.refreshUnplaced()
 
-    store.openDirectory("notes")
-    check(store.isHome && store.focusRequest == Folders.section(for: "notes", in: store.document)?.id,
-          "a folder opens as its section on Home")
-    store.focusRequest = nil
-    check(store.crumbs.map(\.name) == ["vault"], "Home's breadcrumb is the vault", "got \(store.crumbs.map(\.name))")
+    print("\n— Canvases: list, rename, icon and colour (revision 54) —")
     try! "{\"nodes\":[],\"edges\":[]}\n".write(to: root.appendingPathComponent("notes/board.canvas"), atomically: true, encoding: .utf8)
     vault.reload()
-    store.openCanvas(at: "notes/board.canvas")
-    check(!store.isHome && store.crumbs.map(\.name) == ["vault", "board"], "another canvas is a crumb after Home",
-          "got \(store.crumbs.map(\.name))")
-    store.goUp()
-    check(store.isHome, "went back to Home")
-    check(store.node(forFile: "notes/board.canvas") == nil, "a canvas file is not a card on Home")
-    check(store.canvases == [store.homePath, "notes/board.canvas"], "the canvas list is Home, then every other canvas",
+    check(store.canvases == ["notes/board.canvas", "vault.canvas"], "the list is every canvas by its path, none first",
           "got \(store.canvases)")
+    check(store.node(forFile: "notes/board.canvas") == nil, "a canvas file is not a card")
+    store.openCanvas(at: "notes/board.canvas")
+    check(store.canvasPath == "notes/board.canvas" && store.title == "board", "another canvas opens by its name")
     let made = store.newCanvas()
-    check(made == "Untitled canvas.canvas" && store.canvasPath == made
+    check(made == "Untitled canvas.canvas" && store.canvasPath == made && store.renaming == made
           && FileManager.default.fileExists(atPath: root.appendingPathComponent(made ?? "-").path),
-          "a new canvas is written at the root and opened", "got \(String(describing: made))")
-    check(store.canvases.contains("Untitled canvas.canvas"), "and joins the list")
+          "a new canvas is written at the root, opened, and its name asked", "got \(String(describing: made))")
     check(store.newCanvas() == "Untitled canvas 2.canvas", "a second one takes the next free name")
-    try? FileManager.default.removeItem(at: root.appendingPathComponent("Untitled canvas.canvas"))
-    try? FileManager.default.removeItem(at: root.appendingPathComponent("Untitled canvas 2.canvas"))
+    store.renaming = nil
+    check(store.renameCanvas("Untitled canvas 2.canvas", to: "vault") == .taken("vault"), "a name taken is refused")
+    check(store.renameCanvas("Untitled canvas 2.canvas", to: "x:y") == .badName, "a colon is refused")
+    check(store.renameCanvas("Untitled canvas 2.canvas", to: "  Robotics  ") == nil
+          && store.canvasPath == "Robotics.canvas"
+          && fm.fileExists(atPath: root.appendingPathComponent("Robotics.canvas").path)
+          && !fm.fileExists(atPath: root.appendingPathComponent("Untitled canvas 2.canvas").path),
+          "renaming the open canvas renames its file and follows it", "got \(store.canvasPath)")
+    check(store.renameCanvas("Robotics.canvas", to: "robotics") == nil && store.canvasPath == "robotics.canvas"
+          && store.canvases.contains("robotics.canvas"), "a change of case alone renames", "got \(store.canvases)")
+    check(store.renameCanvas("Untitled canvas.canvas", to: "Ideas.canvas") == nil
+          && store.canvases.contains("Ideas.canvas") && store.canvasPath == "robotics.canvas",
+          "another canvas renames without leaving the open one", "got \(store.canvases)")
+    check(store.look(for: "Ideas.canvas") == CanvasStore.CanvasLook(), "a canvas starts with no icon or colour")
+    store.setLook(CanvasStore.CanvasLook(icon: "rocket", color: "4"), for: "Ideas.canvas")
+    let ideas = try! CanvasDocument.decode(Data(contentsOf: root.appendingPathComponent("Ideas.canvas")))
+    check(ideas.extra["x-icon"]?.string == "rocket" && ideas.extra["x-color"]?.string == "4",
+          "an icon and colour are x-icon and x-color in the canvas file")
+    check(store.look(for: "Ideas.canvas") == CanvasStore.CanvasLook(icon: "rocket", color: "4"), "and read back")
+    store.setLook(CanvasStore.CanvasLook(icon: "brain"), for: "robotics.canvas")
+    check(store.document.extra["x-icon"]?.string == "brain" && store.document.extra["x-color"] == nil,
+          "on the open canvas the look is part of its document")
+    check(store.renameCanvas("Ideas.canvas", to: "Later") == nil
+          && store.look(for: "Later.canvas") == CanvasStore.CanvasLook(icon: "rocket", color: "4"),
+          "the look travels with the file")
+    for name in ["Later.canvas", "robotics.canvas"] {
+        try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+    }
     vault.reload()
-    store.goUp()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    check(store.canvasPath != "robotics.canvas" && store.isOpen,
+          "the open canvas gone from disk, the first one left opens", "got \(store.canvasPath)")
+    store.openCanvas(at: "vault.canvas")
 
     print("\n— Shapes —")
     let box = store.draw(.rectangle, from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 220))!
@@ -441,7 +470,7 @@ func storeTests() {
     store.wantsFit = false
     store.openCanvas(at: "notes/board.canvas")
     check(store.wantsFit && store.restoredCentre == nil, "a canvas with no memory asks the view for a fit")
-    store.openHome()
+    store.openCanvas(at: "vault.canvas")
     // The desk's visual centre is the view's, moved by what floats over
     // its edges (`deskInsets`, which the window sets; none here), so the
     // remembered point is that, in world units: (500 + inset.x - 100) / 0.5
@@ -453,7 +482,7 @@ func storeTests() {
           "at the same desk size it comes back exactly where it was", "got \(store.viewport)")
     store.openCanvas(at: "notes/board.canvas")
     store.viewSize = CGSize(width: 1400, height: 800)
-    store.openHome()
+    store.openCanvas(at: "vault.canvas")
     check(store.viewport == Viewport(offset: CGPoint(x: 300, y: 50), scale: 0.5),
           "at another desk size the same point sits under the desk's centre", "got \(store.viewport)")
     check(store.document.nodes.first { $0.kind == .group } != nil, "root canvas reloaded from disk with the group intact")
@@ -477,7 +506,7 @@ func storeTests() {
     check(store.config.views.count == 1 && store.config.views[0].groupBy == "phase", "config decoded")
     vault.reload()
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-    store.openDirectory("courses")
+    for file in ["courses/C0.1.md", "courses/C1.1.md", "courses/C1.2.md"] { store.place(file) }
     let first = store.node(forFile: "courses/C0.1.md")!
     let second = store.node(forFile: "courses/C1.1.md")!
     let third = store.node(forFile: "courses/C1.2.md")!
@@ -491,9 +520,6 @@ func storeTests() {
     check(store.arrangeByConfig(), "arrange finds the rule")
     let groups = store.document.nodes.filter { $0.extra["x-arranged-by"] != nil }.sorted { ($0.label ?? "") < ($1.label ?? "") }
     check(groups.map(\.label) == ["Block 0", "Block 1"], "one labelled group per phase", "got \(groups.map(\.label))")
-    let coursesSection = Folders.section(for: "courses", in: store.document)!
-    check(groups.allSatisfy { coursesSection.frame.contains($0.frame) }, "on Home, inside the files' folder section, grown to fit",
-          "section \(coursesSection.frame) groups \(groups.map(\.frame))")
     check(groups[1].frame.contains(store.document.node(second.id)!.frame) && groups[1].frame.contains(store.document.node(third.id)!.frame), "block 1 holds its two cards")
     check(!store.document.node(second.id)!.frame.intersects(store.document.node(third.id)!.frame), "cards inside a group do not overlap")
     check(store.arrangeByConfig() && store.document.nodes.filter { $0.extra["x-arranged-by"] != nil }.count == 2, "arranging again replaces the groups instead of stacking them")
@@ -502,7 +528,6 @@ func storeTests() {
     check(runs.count > 1 && runs.flatMap { $0 } == Array(0..<9),
           "nine blocks wrap into columns, still read in order", "got \(runs)")
     check(CanvasStore.columnRuns([CGSize(width: 400, height: 300)], aspect: 1.6, gap: 60) == [[0]], "one block is one column")
-    store.openDirectory("")
 
     print("\n— Index —")
     try! "# Alpha\n\nSee [[Gamma]] and [[beta|the other]].\n".write(to: root.appendingPathComponent("alpha.md"), atomically: true, encoding: .utf8)
@@ -637,150 +662,44 @@ func storeTests() {
 
 MainActor.assumeIsolated { storeTests() }
 
-/// Revision 20: a folder is a section on Home; a drag moves files.
+/// Revision 54: no Home. A vault that has one keeps it as an ordinary
+/// canvas, and its folders' sections are groups that never move a file.
 @MainActor
 func folderTests() {
-    print("\n— Folders as sections (revision 20) —")
+    print("\n— An old Home is an ordinary canvas (revision 54) —")
     let root = scratch.appendingPathComponent("folders")
-    for dir in ["a/b", "empty", "papers"] {
-        try! fm.createDirectory(at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
-    }
-    for file in ["top.md", "a/one.md", "a/b/two.md", "papers/p.md", "papers/dup.md", "dup.md"] {
+    try! fm.createDirectory(at: root.appendingPathComponent("papers"), withIntermediateDirectories: true)
+    for file in ["top.md", "papers/p.md"] {
         try! "# \(file)\n".write(to: root.appendingPathComponent(file), atomically: true, encoding: .utf8)
     }
-    try! "{}".write(to: root.appendingPathComponent("a/a.canvas"), atomically: true, encoding: .utf8)
-
-    // Pure: the old folder card goes, sections nest, empty folders wait.
-    let tree = try! VaultNode.scan("", root: root)
-    var old = CanvasDocument(nodes: [CanvasNode(kind: .file, frame: CGRect(x: 0, y: 0, width: 200, height: 150), file: "a")])
-    Folders.reconcile(&old, tree: tree, home: "folders.canvas")
-    check(!old.nodes.contains { $0.kind == .file && $0.file == "a" }, "a folder card from before is taken off")
-    let a = Folders.section(for: "a", in: old), b = Folders.section(for: "a/b", in: old)
-    check(a != nil && b != nil && a!.frame.contains(b!.frame), "a subfolder's section sits inside its parent's")
-    check(b!.frame.contains(old.nodes.first { $0.file == "a/b/two.md" }!.frame), "and holds its file")
-    check(Folders.section(for: "empty", in: old) == nil, "an empty folder has no section yet")
-    check(!old.nodes.contains { $0.file == "a/a.canvas" }, "a canvas file is not placed")
-    check(old.nodes.firstIndex { $0.id == a!.id }! < old.nodes.firstIndex { $0.id == b!.id }!,
-          "the outer section draws first, so the inner one takes its presses")
-    check(Folders.colour(for: "a/b") == Folders.colour(for: "a"), "a subfolder wears its top folder's colour")
-    var again = old
-    check(!Folders.reconcile(&again, tree: tree, home: "folders.canvas"), "a Home already up to date is left alone")
-
-    // Growing pushes along what stands beside and down what sits under.
-    var side = CanvasDocument()
-    var left = CanvasNode(kind: .group, frame: CGRect(x: 0, y: 0, width: 400, height: 300), label: "left")
-    left.extra[Folders.key] = .string("left")
-    var right = CanvasNode(kind: .group, frame: CGRect(x: 460, y: 0, width: 400, height: 300), label: "right")
-    right.extra[Folders.key] = .string("right")
-    let below = CanvasNode(kind: .file, frame: CGRect(x: 0, y: 360, width: 320, height: 200), file: "x.md")
-    let inRight = CanvasNode(kind: .file, frame: CGRect(x: 490, y: 54, width: 320, height: 200), file: "right/y.md")
-    side.nodes = [left, right, below, inRight]
-    Folders.grow(left.id, toContain: CGRect(x: 30, y: 54, width: 700, height: 400), in: &side)
-    let grownLeft = side.node(left.id)!.frame
-    check(!grownLeft.intersects(side.node(right.id)!.frame), "a section grown wider pushes its neighbour along",
-          "left \(grownLeft) right \(side.node(right.id)!.frame)")
-    check(!grownLeft.intersects(side.node(below.id)!.frame), "and one grown taller pushes what is under it down")
-    check(side.node(right.id)!.frame.contains(side.node(inRight.id)!.frame), "a pushed section takes its cards along")
+    var section = CanvasNode(kind: .group, frame: CGRect(x: 0, y: 400, width: 400, height: 300), label: "papers")
+    section.extra[Folders.key] = .string("papers")
+    let top = CanvasNode(kind: .file, frame: CGRect(x: 0, y: 0, width: 320, height: 200), file: "top.md")
+    var old = CanvasDocument(nodes: [section, top])
+    old.extra["x-hidden"] = .array([.string("papers/p.md")])
+    try! old.encode().write(to: root.appendingPathComponent("folders.canvas"))
 
     let defaults = UserDefaults(suiteName: "alex-folder-tests-\(UUID().uuidString)")!
     let vault = Vault(arguments: [], defaults: defaults)
     vault.open(root)
     let store = CanvasStore(vault: vault)
-    let undo = UndoManager()
-    store.undoManager = undo
     func tick(_ t: Double = 0.05) { RunLoop.main.run(until: Date().addingTimeInterval(t)) }
     tick(0.2)
-    check(store.isHome && Folders.section(for: "papers", in: store.document) != nil, "the store opens Home with sections")
-
-    // A card dragged into a section moves its file there.
-    let top = store.node(forFile: "top.md")!
-    let papers = Folders.section(for: "papers", in: store.document)!
-    store.move([top.id], by: CGSize(width: papers.center.x - top.center.x, height: papers.center.y - top.center.y))
+    check(store.canvases == ["folders.canvas"] && store.canvasPath == "folders.canvas" && store.title == "folders",
+          "the old Home is listed and opened as a canvas by its name", "got \(store.canvases)")
+    check(store.document.nodes.count == 2 && store.node(forFile: "papers/p.md") == nil,
+          "nothing is laid out onto it", "got \(store.document.nodes.map { $0.file ?? $0.label ?? "" })")
+    store.move([top.id], by: CGSize(width: section.center.x - top.center.x, height: section.center.y - top.center.y))
     tick()
-    check(fm.fileExists(atPath: root.appendingPathComponent("papers/top.md").path)
-          && !fm.fileExists(atPath: root.appendingPathComponent("top.md").path), "the file moved into the folder")
-    check(store.document.node(top.id)?.file == "papers/top.md", "the card follows it")
-    undo.undo()
-    tick()
-    check(fm.fileExists(atPath: root.appendingPathComponent("top.md").path) && store.document.node(top.id)?.file == "top.md",
-          "undo moves the file back")
-    undo.redo()
-    tick()
-    check(store.document.node(top.id)?.file == "papers/top.md", "redo moves it again")
-
-    // A name already there refuses the drag.
-    let dup = store.node(forFile: "dup.md")!
-    let papersNow = Folders.section(for: "papers", in: store.document)!
-    store.move([dup.id], by: CGSize(width: papersNow.center.x - dup.center.x, height: papersNow.center.y - dup.center.y))
-    tick()
-    check(fm.fileExists(atPath: root.appendingPathComponent("dup.md").path) && store.document.node(dup.id)?.x == dup.x,
-          "a name already taken refuses the drag", "trouble: \(store.trouble ?? "none")")
-    check(store.trouble?.contains("dup.md") == true, "and says why")
-
-    // Out onto Home's floor: back to the vault's root.
-    let moved = store.document.node(top.id)!
-    store.move([moved.id], by: CGSize(width: 0, height: -(moved.y - (Folders.section(for: "papers", in: store.document)!.y)) - 400))
-    tick()
-    check(store.document.node(top.id)?.file == "top.md" && fm.fileExists(atPath: root.appendingPathComponent("top.md").path),
-          "a card dragged out of every section goes to the root")
-
-    // A section dragged into another moves the folder, with its cards.
-    let bSection = Folders.section(for: "a/b", in: store.document)!
-    let target = Folders.section(for: "papers", in: store.document)!
-    let carried = store.nodeIDs(inside: bSection.frame).union([bSection.id])
-    store.move(carried, by: CGSize(width: target.center.x - bSection.center.x, height: target.center.y - bSection.center.y))
-    tick()
-    check(fm.fileExists(atPath: root.appendingPathComponent("papers/b/two.md").path), "the folder moved into the other")
-    check(Folders.section(for: "papers/b", in: store.document) != nil && store.node(forFile: "papers/b/two.md") != nil,
-          "its section and its cards follow")
-
-    // A folder's section renamed renames the folder.
-    let paperSection = Folders.section(for: "papers", in: store.document)!
-    store.setLabel(paperSection.id, "reading")
-    tick()
-    check(fm.fileExists(atPath: root.appendingPathComponent("reading/b/two.md").path)
-          && Folders.section(for: "reading", in: store.document)?.label == "reading"
-          && store.node(forFile: "reading/p.md") != nil, "renaming the section renames the folder and every path under it")
-
-    // Taken off Home, a folder waits in the tray, and comes back.
-    let reading = Folders.section(for: "reading", in: store.document)!
-    store.remove([reading.id])
-    tick()
-    check(Folders.section(for: "reading", in: store.document) == nil && store.node(forFile: "reading/p.md") == nil,
-          "removing a folder's section takes its cards off Home")
-    check(store.unplaced.map(\.path) == ["reading"] && fm.fileExists(atPath: root.appendingPathComponent("reading/p.md").path),
-          "the folder waits in the tray; nothing on disk changes", "got \(store.unplaced.map(\.path))")
-    try! "# Late\n".write(to: root.appendingPathComponent("reading/late.md"), atomically: true, encoding: .utf8)
+    check(fm.fileExists(atPath: root.appendingPathComponent("top.md").path)
+          && store.document.node(top.id)?.file == "top.md", "a card dropped in a folder's section keeps its file where it is")
+    store.setLabel(section.id, "reading")
+    check(fm.fileExists(atPath: root.appendingPathComponent("papers/p.md").path)
+          && store.document.node(section.id)?.label == "reading", "renaming the section renames the group alone")
+    try! "# Late\n".write(to: root.appendingPathComponent("papers/late.md"), atomically: true, encoding: .utf8)
     vault.reload()
     tick(0.2)
-    check(store.node(forFile: "reading/late.md") == nil, "a file appearing in a hidden folder stays off Home")
-    store.place("reading")
-    tick()
-    check(Folders.section(for: "reading", in: store.document) != nil && store.node(forFile: "reading/late.md") != nil
-          && store.unplaced.isEmpty, "placing it brings the section back with everything in it")
-
-    // A new file joins its folder's section, which grows to hold it.
-    let aSection = Folders.section(for: "a", in: store.document)!
-    for i in 0..<6 {
-        try! "# New \(i)\n".write(to: root.appendingPathComponent("a/new\(i).md"), atomically: true, encoding: .utf8)
-    }
-    vault.reload()
-    tick(0.2)
-    let grown = Folders.section(for: "a", in: store.document)!
-    let newCards = (0..<6).compactMap { store.node(forFile: "a/new\($0).md") }
-    check(newCards.count == 6 && newCards.allSatisfy { grown.frame.contains($0.frame) }, "new files land inside their folder's section",
-          "section \(grown.frame) cards \(newCards.map(\.frame))")
-    check(grown.height > aSection.height, "which grows to hold them")
-    let others = store.document.nodes.filter { $0.id != grown.id && !grown.frame.contains($0.frame) && !$0.frame.contains(grown.frame) }
-    check(!others.contains { $0.frame.intersects(grown.frame) }, "and pushes down what was under it",
-          "overlaps: \(others.filter { $0.frame.intersects(grown.frame) }.map { $0.file ?? $0.label ?? "" })")
-
-    // A new note beside a card in a section is written into that folder.
-    store.select(newCards[0].id)
-    store.newNote()
-    check(fm.fileExists(atPath: root.appendingPathComponent("a/Untitled.md").path)
-          && grown.frame.union(Folders.section(for: "a", in: store.document)!.frame)
-            .contains(store.node(forFile: "a/Untitled.md")!.frame), "a new note joins the selection's folder")
+    check(store.node(forFile: "papers/late.md") == nil, "a file that appears is not placed by itself")
 }
 
 MainActor.assumeIsolated { folderTests() }
@@ -900,6 +819,7 @@ do {
     let store = CanvasStore(vault: vault)
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "links")
     let video = store.addLink("https://youtu.be/dQw4w9WgXcQ", at: nil)
     check(video?.kind == .link && video?.url == "https://youtu.be/dQw4w9WgXcQ", "a link card carries its address")
     check(video?.width == 320 && video?.height == 234, "and takes its kind's size", "got \(String(describing: video?.frame))")
@@ -943,6 +863,7 @@ MainActor.assumeIsolated { linkStoreTests() }
     let store = CanvasStore(vault: vault)
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "pasted")
     let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
     let first = store.pasteImage(png: png, pixels: CGSize(width: 800, height: 600), now: when)
     check(first?.file == "Pasted image 2026-09-29 14.32.png", "a pasted picture is a file card", "got \(String(describing: first?.file))")
@@ -1110,6 +1031,7 @@ MainActor.assumeIsolated { cameraTests() }
     let store = CanvasStore(vault: vault)
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "style")
     func tick() { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     func node(_ id: String) -> CanvasNode { store.document.node(id)! }
     let box = store.draw(.rectangle, from: CGPoint(x: 0, y: 0), to: CGPoint(x: 200, y: 100))!
@@ -1255,6 +1177,13 @@ MainActor.assumeIsolated { toolKeyTests() }
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     store.viewSize = CGSize(width: 1200, height: 800)
     func tick() { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    store.newCanvas(named: "clip")
+    store.place("pic.png", at: CGPoint(x: 0, y: 600))
+    store.place("note.md", at: CGPoint(x: 400, y: 600))
+    var folderSection = CanvasNode(kind: .group, frame: CGRect(x: 1000, y: 1000, width: 400, height: 300), label: "sub")
+    folderSection.extra[Folders.key] = .string("sub")
+    store.add(folderSection)
+    store.place("sub/a.md", at: CGPoint(x: 1030, y: 1050))
 
     let sticky = store.addSticky(at: store.viewport.toWorld(CGPoint(x: 100, y: 100)))
     store.setText(sticky.id, "hello")
@@ -1286,7 +1215,7 @@ MainActor.assumeIsolated { toolKeyTests() }
 
     let section = store.document.nodes.first { Folders.folder(of: $0) == "sub" }
     let inner = store.node(forFile: "sub/a.md")
-    check(section != nil && inner != nil, "Home holds the folder's section and its note")
+    check(section != nil && inner != nil, "the canvas holds the folder's section and its note")
     if let section, let inner {
         let held = store.clip([section.id])!
         check(held.nodes.contains { $0.id == inner.id }, "a section's clip holds what it holds")
@@ -1301,8 +1230,9 @@ MainActor.assumeIsolated { toolKeyTests() }
         tick()
         let cut = store.paste(held)
         tick()
-        check(cut.contains { Folders.folder(of: $0) == "sub" } && cut.contains { $0.file == "sub/a.md" },
-              "cut and pasted, the folder's section comes back with its note",
+        check(cut.count == 1 && cut[0].kind == .group && Folders.folder(of: cut[0]) == nil
+              && store.document.nodes.filter { $0.file == "sub/a.md" }.count == 1,
+              "taken off alone and pasted, the section is a plain group and its note stays single (revision 54)",
               "got \(cut.map { ($0.kind, $0.file ?? "") })")
     }
 
@@ -1313,7 +1243,7 @@ MainActor.assumeIsolated { toolKeyTests() }
               "got \(pasted.map { $0.file ?? "" })")
         check((try? Data(contentsOf: root.appendingPathComponent("pic 2.png"))) == png, "the copy's bytes are on disk")
     } else {
-        check(false, "Home holds the picture and the note")
+        check(false, "the canvas holds the picture and the note")
     }
 }
 
@@ -1361,8 +1291,11 @@ MainActor.assumeIsolated { clipTests() }
     store.undoManager = undo
     func tick() { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     let canvasURL = root.appendingPathComponent("undo.canvas")
+    store.newCanvas(named: "undo")
+    store.place("card.md")
+    undo.removeAllActions()
 
-    guard let card = store.node(forFile: "card.md") else { return check(false, "Home holds the card") }
+    guard let card = store.node(forFile: "card.md") else { return check(false, "the canvas holds the card") }
     store.move([card.id], by: CGSize(width: 40, height: 0))
     tick()
     // The door adds a node on disk, as Claude would.
@@ -1472,6 +1405,7 @@ MainActor.assumeIsolated { undoDeltaTests() }
     let store = CanvasStore(vault: vault)
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "batchB")
     let undo = UndoManager()
     store.undoManager = undo
     func tick() { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }

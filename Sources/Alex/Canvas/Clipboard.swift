@@ -73,12 +73,10 @@ struct CanvasClip: Equatable {
     /// along only where its file is not on `doc` already, except a
     /// picture, whose bytes `copyFile` writes to a file of their own (nil
     /// leaves the card out); a file gone from the vault is left out. A
-    /// folder has one section, so a section keeps its folder only where
-    /// `keepsFolder` says the folder's section is gone (a cut on Home).
+    /// folder's section comes as a plain group.
     func pasted(into doc: CanvasDocument, offset: CGVector,
                 exists: (String) -> Bool,
                 isImage: (String) -> Bool,
-                keepsFolder: (String) -> Bool,
                 copyFile: (String) -> String?) -> (nodes: [CanvasNode], edges: [CanvasEdge]) {
         let placed = Set(doc.nodes.compactMap { $0.kind == .file ? $0.file : nil })
         var ids: [String: String] = [:]
@@ -92,9 +90,8 @@ struct CanvasClip: Equatable {
                     copy.file = fresh
                 }
             }
-            if let folder = Folders.folder(of: node), !keepsFolder(folder) {
-                copy.extra[Folders.key] = nil
-            }
+            // A copy of a folder's section is a plain group (revision 54).
+            copy.extra[Folders.key] = nil
             copy.id = CanvasDocument.newID()
             copy.x += offset.dx
             copy.y += offset.dy

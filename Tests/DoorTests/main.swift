@@ -67,6 +67,19 @@ func doorTests() {
     let batch = batchData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String: Any]] }
     check(batch?.count == 1, "a batch answers each request and skips notifications")
 
+    print("\n— No canvas open (revision 54) —")
+    let none = tool("get_context")
+    check(none.ok && none.payload["canvas"] is NSNull, "with no canvas the context says so", none.text)
+    let unplacedWrite = tool("write_artifact", ["path": "early.md", "content": "# Early\n"])
+    check(unplacedWrite.ok && unplacedWrite.payload["node"] == nil && unplacedWrite.payload["canvas"] is NSNull
+          && fm.fileExists(atPath: root.appendingPathComponent("early.md").path),
+          "an artifact is written and not placed", unplacedWrite.text)
+    let noCanvas = tool("add_card", ["type": "text", "text": "where?"])
+    check(!noCanvas.ok && noCanvas.text.contains("No canvas"), "a card with nowhere to go is refused", noCanvas.text)
+    let first = tool("add_card", ["type": "file", "file": "alpha.md", "canvas": "vault.canvas"])
+    check(first.ok && canvas.isOpen && canvas.canvasPath == "vault.canvas" && canvas.node(forFile: "alpha.md") != nil,
+          "the first canvas can come through the door, and the empty desk opens it", first.text)
+
     print("\n— get_context —")
     let ctx = tool("get_context")
     check(ctx.ok, "get_context succeeds", ctx.text)
@@ -82,11 +95,10 @@ func doorTests() {
     let plot = tool("write_artifact", ["path": "artifacts/C3.1/notes.md", "content": "# Step response\n\nrise time 0.4 s\n"])
     check(plot.ok, "writes a text artifact", plot.text)
     check(fm.fileExists(atPath: root.appendingPathComponent("artifacts/C3.1/notes.md").path), "file exists, directory created")
-    check(plot.payload["canvas"] as? String == "vault.canvas", "placed on Home", "got \(String(describing: plot.payload["canvas"]))")
+    check(plot.payload["canvas"] as? String == "vault.canvas", "placed on the open canvas", "got \(String(describing: plot.payload["canvas"]))")
     let plotID = (plot.payload["node"] as? [String: Any])?["id"] as? String ?? ""
-    let c31 = Folders.section(for: "artifacts/C3.1", in: canvas.document)
-    check(c31 != nil && canvas.document.node(plotID).map { c31!.frame.contains($0.frame) } == true,
-          "inside its folder's section, made for it")
+    check(canvas.document.node(plotID) != nil && Folders.section(for: "artifacts/C3.1", in: canvas.document) == nil,
+          "as a card, with no folder section made for it")
     check(!fm.fileExists(atPath: root.appendingPathComponent("artifacts/C3.1/C3.1.canvas").path), "no folder canvas is made")
     let again = tool("write_artifact", ["path": "artifacts/C3.1/notes.md", "content": "x"])
     check(!again.ok && again.text.contains("overwrite"), "refuses to overwrite without the flag")
@@ -113,13 +125,13 @@ func doorTests() {
     check(noteNode?.text == "Remember this" && noteNode?.color == "3", "sticky text and default colour on the open canvas")
     check(noteNode.map { !$0.frame.intersects(alphaNode.frame) } == true, "placed beside, not on top")
     let link = tool("add_card", ["type": "link", "url": "https://example.com", "canvas": "artifacts/C3.1"])
-    check(link.ok && link.payload["canvas"] as? String == "vault.canvas", "a directory names Home")
+    check(!link.ok, "a directory is not a canvas (no Home since revision 54)", link.text)
     let ghost = tool("add_card", ["type": "file", "file": "nope.md"])
     check(!ghost.ok, "a file card for a missing file is refused")
     let folderCard = tool("add_card", ["type": "file", "file": "artifacts"])
-    check(!folderCard.ok && folderCard.text.contains("section"), "a folder card is refused: a folder is a section")
+    check(!folderCard.ok && folderCard.text.contains("folder"), "a folder card is refused")
     let quiet = tool("add_card", ["type": "file", "file": "quiet.md"])
-    check(quiet.ok && canvas.node(forFile: "quiet.md") != nil, "a file card on Home is placed without coordinates")
+    check(quiet.ok && canvas.node(forFile: "quiet.md") != nil, "a file card is placed without coordinates")
     let edge = tool("connect", ["from": alphaNode.id, "to": noteID, "label": "see"])
     check(edge.ok && canvas.document.edges.first?.label == "see", "edge connected on the open canvas")
     let badEdge = tool("connect", ["from": alphaNode.id, "to": "zzz"])
@@ -130,10 +142,10 @@ func doorTests() {
     check(read.ok && ((read.payload["canvas"] as? [String: Any])?["nodes"] as? [Any])?.count == canvas.document.nodes.count, "read_canvas matches the store")
 
     print("\n— focus, list_files —")
-    let focused = tool("focus", ["canvas": "artifacts/C3.1", "file": "artifacts/C3.1/notes.md"])
-    check(focused.ok, "focus finds a file through its folder", focused.text)
-    check(canvas.isHome && canvas.focusRequest == canvas.node(forFile: "artifacts/C3.1/notes.md")?.id,
-          "the store stays on Home and asks to pan")
+    let focused = tool("focus", ["file": "artifacts/C3.1/notes.md"])
+    check(focused.ok, "focus finds a file on the open canvas", focused.text)
+    check(canvas.canvasPath == "vault.canvas" && canvas.focusRequest == canvas.node(forFile: "artifacts/C3.1/notes.md")?.id,
+          "the store stays on its canvas and asks to pan")
     check(activated == 1, "the app was brought forward")
     let missingFocus = tool("focus", ["id": "nope"])
     check(!missingFocus.ok, "focusing a missing node says so")

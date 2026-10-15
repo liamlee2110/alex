@@ -10,6 +10,7 @@ enum Artwork: String {
     case welcome = "alex-welcome"
     case cards = "paper-card-stack"
     case folders = "folder-tabs"
+    case emptyCanvas = "alex-empty-canvas"
 
     private static let places = ["", "Mascot", "Mascot/Micro"]
     @MainActor private static var cache: [Artwork: NSImage] = [:]

@@ -6,9 +6,8 @@ files that Alex shows as a canvas and that Claude Code can work in.
 - Notes are Markdown. Frontmatter (`key: value` between `---` lines) can
   colour a card, group it and connect it; see
   `canvas.config.json`.
-- `vault-template.canvas` (named after the folder) is Home, the layout,
-  in JSON Canvas 1.0: every folder is a section holding its files. Commit
-  it; it is the map.
+- `*.canvas` files are your canvases, in JSON Canvas 1.0. Alex asks for
+  the first one when it opens this folder. Commit them; they are the map.
 - `.mcp.json` connects Claude Code to Alex's door when Alex is running and
   the door is on (Settings → Claude Code). Claude Code asks once to trust it.
 - `CLAUDE.md` tells Claude how this vault is shaped. Add your own rules

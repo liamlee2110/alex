@@ -134,12 +134,15 @@ struct CanvasMenu: View {
 
     var body: some View {
         IconMenu(symbol: .ellipsis, label: "Canvas menu", hint: "Canvas") {
-            MenuItem("Arrange by frontmatter") { store.arrangeByConfig() }
+            MenuItem("Rename", enabled: store.isOpen) { store.renaming = store.canvasPath }
+            MenuItem("Icon and colour…", enabled: store.isOpen) { store.lookPicking = store.canvasPath }
+            MenuItem.divider
+            MenuItem("Arrange by frontmatter", enabled: store.isOpen) { store.arrangeByConfig() }
             MenuItem("Place everything not yet placed", enabled: !store.unplaced.isEmpty) {
                 store.placeAllUnplaced()
             }
             MenuItem.divider
-            MenuItem("Reveal canvas file in Finder") {
+            MenuItem("Reveal canvas file in Finder", enabled: store.isOpen) {
                 if let url = store.vault.url(for: store.canvasPath) {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }

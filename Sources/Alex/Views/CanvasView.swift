@@ -735,9 +735,9 @@ struct CanvasView: View {
                          store: store, onDone: finishEditing)
                 .onTapGesture(count: 2) {
                     if kind == .directory {
-                        // A folder card left on another canvas: the
-                        // folder is a section on Home now.
-                        store.openDirectory(path)
+                        // A folder card from before revision 20: the
+                        // panel lists what it holds.
+                        store.reveal(path)
                     } else if kind == .canvas {
                         store.openCanvas(at: path)
                     } else if kind == .markdown, !missingFile(path) {

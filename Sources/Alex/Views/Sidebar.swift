@@ -291,10 +291,12 @@ struct DoorDot: View {
     }
 }
 
-/// Figma's boards: Home, then every other canvas in the vault, the open
-/// one on the grey square. At the head, find, a new canvas and the open
-/// canvas's own verbs behind `•••` (the "N not placed" capsule of
-/// revision 19 left in revision 44).
+/// Figma's boards: every canvas in the vault, the open one on the grey
+/// square (no Home since revision 54). At the head, find, a new canvas and
+/// the open canvas's own verbs behind `•••` (the "N not placed" capsule of
+/// revision 19 left in revision 44). Each row wears its canvas's icon in
+/// its colour; a double-click or Rename makes its name a field, and its
+/// icon and colour are picked under it.
 /// It slides with its workspace.
 struct CanvasList: View {
     @ObservedObject var store: CanvasStore
@@ -324,18 +326,190 @@ struct CanvasList: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(store.canvases, id: \.self) { path in
-                        SidebarRow(symbol: path == store.homePath ? .house : VaultEntry.Kind.canvas.symbol,
-                                   label: store.canvasName(path),
-                                   active: path == store.canvasPath,
-                                   hint: path == store.homePath ? "Home: the vault's own canvas" : path) {
-                            if path == store.homePath { store.openHome() } else { store.openCanvas(at: path) }
+                        CanvasRow(store: store, path: path)
+                        if store.lookPicking == path {
+                            CanvasLookPicker(store: store, path: path)
+                                .padding(.vertical, Space.xs)
+                                .transition(.opacity)
                         }
                     }
                 }
                 .padding(.horizontal, Space.s)
                 .padding(.bottom, Space.s)
+                .animation(Motion.quick, value: store.lookPicking)
             }
         }
+    }
+}
+
+/// The verbs on one canvas: its row's right-click menu, and the open
+/// one's under the Canvases `•••`.
+@MainActor
+enum CanvasVerbs {
+    @MenuBuilder
+    static func items(for path: String, store: CanvasStore) -> [MenuItem] {
+        MenuItem("Rename") { store.renaming = path }
+        MenuItem("Icon and colour…") { store.lookPicking = path }
+        MenuItem.divider
+        MenuItem("Reveal in Finder") {
+            if let url = store.vault.url(for: path) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+    }
+}
+
+/// A canvas's row: its icon in its colour and its name, or, while it is
+/// renamed, its name as a field (Figma's page rename). ↩ or leaving the
+/// field renames the file; Esc keeps the name.
+struct CanvasRow: View {
+    @ObservedObject var store: CanvasStore
+    let path: String
+
+    var body: some View {
+        let look = store.look(for: path)
+        let glyph = look.icon.flatMap(Glyph.init(rawValue:)) ?? VaultEntry.Kind.canvas.symbol
+        if store.renaming == path {
+            CanvasNameField(store: store, path: path, glyph: glyph, ink: CanvasRow.ink(look))
+        } else {
+            SidebarRow(symbol: glyph,
+                       label: store.canvasName(path),
+                       active: path == store.canvasPath,
+                       glyphInk: CanvasRow.ink(look),
+                       hint: path) {
+                store.openCanvas(at: path)
+            }
+            // A Button's own action fires at once; the double-click
+            // beside it renames without holding the single click back.
+            .simultaneousGesture(TapGesture(count: 2).onEnded { store.renaming = path })
+            .popupMenu { CanvasVerbs.items(for: path, store: store) }
+        }
+    }
+
+    /// The glyph's ink: the canvas's colour, else a place's ink.
+    static func ink(_ look: CanvasStore.CanvasLook) -> Color {
+        look.color.map { Hepta.label($0) } ?? Ink.icon
+    }
+}
+
+/// The row's name as a field, typed name selected whole.
+private struct CanvasNameField: View {
+    @ObservedObject var store: CanvasStore
+    let path: String
+    let glyph: Glyph
+    let ink: Color
+
+    @State private var name = ""
+    @State private var failure: String?
+    @State private var done = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.s) {
+                GlyphImage(glyph)
+                    .foregroundStyle(ink)
+                    .frame(width: 16)
+                TextField("Canvas name", text: $name)
+                    .textFieldStyle(.plain)
+                    .font(Typography.control)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onExitCommand(perform: cancel)
+                    .onChange(of: name) { _, _ in failure = nil }
+                    .onChange(of: focused) { _, now in if !now { commit() } }
+                    .accessibilityLabel("Canvas name")
+            }
+            .padding(.horizontal, Space.s)
+            .frame(height: Shell.row)
+            .background(RoundedRectangle(cornerRadius: Radius.control).fill(Ink.card))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Accent.text, lineWidth: 1))
+            if let failure {
+                Text(failure)
+                    .font(Typography.meta)
+                    .foregroundStyle(Ink.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Space.s)
+            }
+        }
+        .onAppear {
+            name = store.canvasName(path)
+            DispatchQueue.main.async {
+                focused = true
+                NSApp.keyWindow?.firstResponder.flatMap { $0 as? NSText }?.selectAll(nil)
+            }
+        }
+    }
+
+    private func commit() {
+        guard !done, store.renaming == path else { return }
+        if let why = store.renameCanvas(path, to: name) {
+            // Leaving the field with a name it cannot take keeps the old.
+            if focused { failure = why.description; return }
+            cancel()
+            return
+        }
+        done = true
+        store.renaming = nil
+    }
+
+    private func cancel() {
+        done = true
+        store.renaming = nil
+    }
+}
+
+/// A canvas's icon and colour (revision 54), picked in a card under its
+/// row: the seven colours, then the icons, each in the colour picked. A
+/// pick is written to the canvas file at once; Done or Esc closes it.
+struct CanvasLookPicker: View {
+    @ObservedObject var store: CanvasStore
+    let path: String
+
+    private let columns = Array(repeating: GridItem(.fixed(IconButton.Size.small.side.width), spacing: Space.xs), count: 6)
+
+    var body: some View {
+        let look = store.look(for: path)
+        let current = look.icon.flatMap(Glyph.init(rawValue:)) ?? VaultEntry.Kind.canvas.symbol
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack(spacing: 0) {
+                ForEach(NodeMenu.colours, id: \.0) { name, code in
+                    Swatch(name: name, code: code, active: look.color == code) {
+                        var next = look
+                        next.color = code
+                        store.setLook(next, for: path)
+                    }
+                }
+            }
+            LazyVGrid(columns: columns, alignment: .leading, spacing: Space.xs) {
+                ForEach(Glyph.canvasIcons, id: \.self) { glyph in
+                    IconButton(symbol: glyph, label: CanvasLookPicker.name(of: glyph), size: .small,
+                               active: glyph == current, ink: CanvasRow.ink(look)) {
+                        var next = look
+                        next.icon = glyph == VaultEntry.Kind.canvas.symbol ? nil : glyph.rawValue
+                        store.setLook(next, for: path)
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Done") { store.lookPicking = nil }
+                    .buttonStyle(.outline)
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(Space.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Radius.well).fill(Ink.float))
+        .overlay(RoundedRectangle(cornerRadius: Radius.well).strokeBorder(Ink.hairline, lineWidth: 1))
+        .onExitCommand { store.lookPicking = nil }
+    }
+
+    /// An icon as a person says it: `graduation-cap` is "Graduation cap".
+    static func name(of glyph: Glyph) -> String {
+        if glyph == VaultEntry.Kind.canvas.symbol { return "Default" }
+        let words = glyph.rawValue.replacingOccurrences(of: "-", with: " ")
+        return words.prefix(1).capitalized + words.dropFirst()
     }
 }
 
@@ -360,8 +534,9 @@ struct SidebarRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Space.s) {
+                // A canvas's colour stays on its glyph when it is open.
                 GlyphImage(symbol)
-                    .foregroundStyle(active ? Ink.primary : glyphInk)
+                    .foregroundStyle(active && glyphInk == Ink.icon ? Ink.primary : glyphInk)
                     .frame(width: 16)
                 Text(label)
                     .font(active ? Typography.control : Typography.body)

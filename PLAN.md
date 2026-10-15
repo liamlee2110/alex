@@ -1015,6 +1015,37 @@ live edges and keys.
   grip resizes about the centre (`Grip.resizing(fromCentre:)`, tested).
 `--keys` clicks at two seconds, once the opening camera has settled, and
 takes `cmd-a`, the arrows and `shift-2`.
+Revision 54 (2026-10-15, asked by Liam): no Home; the person makes
+every canvas, names it and marks it.
+- **No Home** (D5 rewritten). `<vaultname>.canvas` is no longer made,
+  laid out or kept up to date; a vault that has one keeps it as an
+  ordinary canvas, listed by its name. Sections are groups and never move
+  a file; ⌘[ "Back to Home" is gone. A file reached from ⌘K that is on no
+  card of the open canvas shows in the panel with its verb to place it,
+  as a loose file did.
+- **The first canvas.** A workspace with no canvas opens on an empty
+  desk: the mascot holding a blank card (`alex-empty-canvas.png`), "Create
+  your first canvas", one sentence, and the name field already typed
+  ("Untitled canvas") and selected, so a name and ↩ make it. The palette,
+  the zoom bar and the style panel stay away until there is a desk.
+  The vault opens on the canvas it last showed, else the first in the
+  list, else this page.
+- **Nothing to read at the start.** A new workspace is an empty folder
+  with `.mcp.json` and `.gitignore`: no README, no notes, no canvas.
+  `vault-template/` in the repository keeps its `CLAUDE.md` and README
+  for whoever clones it.
+- **Rename.** A canvas's name is its file's. Double-click its row, or
+  Rename in its right-click menu or the Canvases `•••`, and the name is
+  edited in the row; ↩ renames the file on disk, refusing a name taken
+  or one with / or :, Esc keeps it. A new canvas starts in that field.
+  What the app remembers for a canvas (viewport, the canvas last open)
+  follows it.
+- **Icon and colour.** The row's glyph is the canvas's: its right-click
+  menu and the `•••` open a picker under the row — seven colours (none
+  and Heptabase's six label colours) and a grid of Lucide icons — and
+  the choice is `x-icon` and `x-color` at the canvas file's top level,
+  so it travels with the file and other JSON Canvas apps ignore it (D4).
+  The glyph wears the colour; with none it is the ink of any row.
 
 ## 0. One paragraph
 
@@ -1037,8 +1068,8 @@ The app is called Alex.
 | Need today | What the canvas shows |
 |---|---|
 | Where am I on ROADMAP.md (v3, nine blocks) | Blocks as groups, 25 course cards coloured by `status`, badges for `level` / `target` / `next_review`, edges drawn from `prerequisites` |
-| What did the coach make | `artifacts/C3.1/` is a section on Home with the plot's card in it; click to open |
-| What is next | `queue.md` pinned as a card on Home; the README dashboard block as a card |
+| What did the coach make | the plot's card placed on the open canvas by the door; click to open |
+| What is next | `queue.md` as a card on the canvas Liam keeps for it; the README dashboard block as a card |
 | What happened | `sessions/` as a strip of dated cards; `errors.md` and `reviews/` as cards |
 | Educational resources | `resources/` (new, later) one folder per resource: PDF, notes, links, critiques inside |
 | Claude as the coach, step 10 of a session | Writes the session log and artifacts as today, then via the door: places them on the competency's canvas and focuses the app on them |
@@ -1095,23 +1126,23 @@ unchanged, so a canvas from a future build or another app never empties.
 *Considered:* a bespoke JSON. Rejected; an OSS vault should not be locked to
 this app.
 
-**D5. A folder is a section on Home, and the section is the folder**
-(rewritten in revision 20). Home, `<vaultname>.canvas` at the root, shows
-the whole vault: each directory is a `group` node carrying its path under
-`x-folder`, holding its files' cards and its subfolders' sections. What
-appears in the vault is placed in its folder's section; what is taken off
-Home is listed under the canvas's `x-hidden` and waits in the tray. A card
-or section dragged into another folder's section, or onto Home's floor,
-moves its file or folder there on disk, and renaming a folder's section
-renames the folder; a name already taken refuses the move, and undo moves
-it back. No other canvas is made by the app; any `.canvas` file still
-opens. *Considered:* the folder as a cardstock marker that opens the
-directory's own canvas (D5 as first written, revisions 1–19): it repeated
-the sidebar's tree and hid the knowledge behind a click. *Considered:*
-sections that only arrange and never move files: safer for a repository,
-but Liam uses the vault as a workspace, where where a card sits and where
-its file lives should be one fact. The rule keeps "clone and it works":
-open any folder and Home lays it out.
+**D5. The person makes every canvas; there is no Home** (rewritten in
+revision 54). Every `.canvas` file is one the person made or brought;
+the app makes none of its own and none is special. A workspace with no
+canvas opens on an empty desk that asks for the first one's name. A file
+is on a canvas where it was placed — a new note, a paste, a drop, the
+door — and ⌘K finds every file, placed or not. A group is a group: a
+section never moves a file on disk. A canvas's name is its file's name,
+and renaming it renames the file; its icon and colour are `x-icon` and
+`x-color` at the file's top level (D4's `x-` keys). Any `.canvas` file
+opens. *Considered:* Home, `<vaultname>.canvas` at the root, laying out
+the whole vault with each directory a section whose drag moved files
+(revisions 20–53): it made a canvas nobody asked for, filled it with
+files the person had not chosen, and named it after the workspace, so
+the list's first row read as a second workspace. A vault that has one
+keeps it as an ordinary canvas. *Considered before that:* the folder as
+a cardstock marker that opened the directory's own canvas (revisions
+1–19).
 
 **D6. The MCP door is Donna's door with different tools.** `McpServer.swift`
 (the loopback `NWListener`, Streamable HTTP, stateless, Origin check, body
@@ -1160,7 +1191,7 @@ and code all peek without per-type code.
 │              CanvasDelta.swift     an undo step as the change alone     │
 │              Layout.swift          auto-layout, free-slot placement     │
 │  Views/      CanvasView.swift      viewport, gestures, culling          │
-│              Folders.swift         a folder as a section on Home (D5)   │
+│              Folders.swift         an old folder section, read only     │
 │              CardNode.swift        paper / photo / mono / sticky / link │
 │              GroupNode.swift       labelled tinted region               │
 │              EdgeLayer.swift       Path-drawn edges with labels         │
@@ -1202,7 +1233,7 @@ Vault layout, using the learn repo as it is today:
 
 ```
 learn/
-  learn.canvas                 Home (auto-created on first open)
+  learn.canvas                 the old Home, an ordinary canvas now
   competencies/
     competencies.canvas        blocks as groups, cards from *.md
     C0.1.md ...
@@ -1222,7 +1253,7 @@ Node kinds and how each renders:
 |---|---|---|
 | `group` with `x-folder` | A section with a folder glyph in its label, holding the folder's cards and subfolders' sections (revision 20) | The section's name and colour; renaming renames the folder |
 | `file` → `.md` | Paper card: title, first lines, frontmatter chips; double-click writes on the card itself, in the file's own markdown | Donna's Markdown editor: rendered in place, editable, checklists, pasted images |
-| `file` → image / plot | Photo card; a picture pasted over the desk is written beside the canvas (on Home, into the section under the view's centre) as `Pasted image <date> <time>.png` and placed mid-view in its own shape — the bytes are a file, the canvas only points (D2); no fold and no pill, its corners 0/S/M/L from the style panel (revision 45) | Full size, zoomable, for a picture not on the canvas; a placed one keeps the sheet shut (revision 45) |
+| `file` → image / plot | Photo card; a picture pasted over the desk is written beside the canvas as `Pasted image <date> <time>.png` and placed mid-view in its own shape — the bytes are a file, the canvas only points (D2); no fold and no pill, its corners 0/S/M/L from the style panel (revision 45) | Full size, zoomable, for a picture not on the canvas; a placed one keeps the sheet shut (revision 45) |
 | `file` → `.py .json .csv ...` | Mono card, first lines | Mono text, read-only in v1 |
 | `file` → `.html` | QuickLook thumbnail | `WKWebView` with read access limited to the vault, no script bridge |
 | `file` → `.pdf` | Page-shaped card: the first page at the card's width, the name and the page count under it | `PDFView` |
@@ -1256,7 +1287,7 @@ what Liam is looking at, placing without knowing layout maths, and pointing.
 | `get_context` | Vault root, open canvas path, selected nodes with their file paths or text, viewport | JSON |
 | `read_canvas {path}` | The JSON Canvas file | nodes, edges |
 | `add_card {canvas, type, text\|file\|url, near?, group?, color?, x? y? w? h?}` | Adds a node; without coordinates places it beside `near`, else beside the selection, else in the first free slot | node id |
-| `write_artifact {path, content\|base64, canvas?, near?, overwrite?}` | Writes a file inside the vault (`artifacts/C3.1/pid_step.png`) and places it, by default in its folder's section on Home (revision 20) | path, node id |
+| `write_artifact {path, content\|base64, canvas?, near?, overwrite?}` | Writes a file inside the vault (`artifacts/C3.1/pid_step.png`) and places it on the open canvas or `canvas`; with neither it is written and not placed (revision 54) | path, node id |
 | `connect {canvas, from, to, label?}` | Adds an edge | edge id |
 | `update_card {canvas, id, text? color? x? y? w? h?}` | Edits a node | ok |
 | `focus {canvas, id?}` | Opens the canvas in the app, pans to the node, pulses it | ok |
@@ -1298,12 +1329,10 @@ that follows selection.
 
 Surfaces:
 
-- **Home** = the vault root canvas: cards for the root's files, and a
-  section for each folder holding its files and its subfolders' sections
-  (revision 20). The Canvases list's first row, named for the workspace.
-  A folder picked in the tree is its section, looked at whole.
-- **Another canvas** = any other `.canvas` file, opened from the Canvases
-  list or a card; back to Home with ⌘[ or the house.
+- **A canvas** = any `.canvas` file, made by the person and opened from
+  the Canvases list or a card; there is no Home (revision 54). A
+  workspace with none opens on the first-canvas page: the mascot, a
+  name already typed and selected, and Create canvas.
 - **Card panel** on the right, the floating sheet of revision 21, dragged
   wider or narrower at its leading edge, follows selection and closes
   when nothing is selected unless a pin holds it (revision 10). Its head
@@ -1318,9 +1347,10 @@ Surfaces:
 - **Sidebar and workspaces** (revisions 16, 21 and 37, Figma's shape):
   a white card floating over the desk's left, the full height less a
   gutter, holding all the window's chrome: a head row with the traffic
-  lights, the toggle and a new note; then Canvases, Home and every
-  other `.canvas`, the open one on a grey square, with find, a new
-  canvas and the canvas's `•••` at its head (the "N not placed"
+  lights, the toggle and a new note; then Canvases, every `.canvas`
+  wearing its icon in its colour, the open one on a grey square,
+  renamed in its row (double-click, or Rename in its right-click menu),
+  with find, a new canvas and the canvas's `•••` at its head (the "N not placed"
   capsule left in revision 44); and at the
   foot, small, the workspace, whose menu switches workspaces, makes a
   new one from the template vault (revision 31) and holds Settings. No
@@ -1364,13 +1394,11 @@ Surfaces:
 Folder section (revision 20, replacing the cardstock folder node): a
 section like any other — the colour at 14% over the desk inside a 50%
 border, the label a solid pill on the top edge — with a folder glyph
-before the folder's name. Its cards lie in rows of four under a head
-that leaves room for a nested section's pill; subfolders' sections in
-rows under the cards.
+before the folder's name. Since revision 54 none is made; one left on
+an old Home is a group that never moves a file.
 
 Interactions in v1: pan (two-finger scroll, or drag the ground), pinch
-zoom, marquee select, drag to move (on Home, into another folder's
-section moves the file, revision 20), any edge or corner to resize, ⌫
+zoom, marquee select, drag to move (never moving a file, revision 54), any edge or corner to resize, ⌫
 removes from the canvas (never deletes the file; a file is deleted only
 from the tray with confirmation), the sticky tool or ⌘⇧N makes a sticky
 note (double-click ground did until revision 46), ↩ writes in the one

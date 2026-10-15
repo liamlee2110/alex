@@ -128,7 +128,7 @@ struct StylePanel: View {
 
 /// One of the node colours as a round swatch in a cell: the preset's
 /// label hue, or an empty ring for none.
-private struct Swatch: View {
+struct Swatch: View {
     let name: String
     let code: String?
     let active: Bool

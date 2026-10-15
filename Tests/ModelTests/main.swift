@@ -154,12 +154,9 @@ do {
     let made = try? NewWorkspace.create(named: "Course", in: parent, template: template)
     let path = { (p: String) in parent.appendingPathComponent("Course/" + p).path }
     check(made?.lastPathComponent == "Course", "makes the folder beside the others", "got \(String(describing: made))")
-    check(fm.fileExists(atPath: path("Course.canvas")) && !fm.fileExists(atPath: path("vault-template.canvas")),
-          "Home is named after the folder")
-    check(fm.fileExists(atPath: path(".mcp.json")) && fm.fileExists(atPath: path("notes/welcome.md")),
-          "the template's dot files and notes come along")
-    let claude = (try? String(contentsOfFile: path("CLAUDE.md"), encoding: .utf8)) ?? ""
-    check(claude.contains("`Course.canvas`") && !claude.contains("vault-template.canvas"), "the notes name the new Home")
+    let inside = (try? fm.contentsOfDirectory(atPath: made?.path ?? "")) ?? []
+    check(Set(inside) == [".mcp.json", ".gitignore"],
+          "only the template's dot files come along: no notes, no canvas (revision 54)", "got \(inside.sorted())")
     check((try? NewWorkspace.create(named: "Course", in: parent, template: template)) == nil, "never makes one twice")
     let bare = try? NewWorkspace.create(named: "Bare", in: parent, template: nil)
     check(bare.map { (try? fm.contentsOfDirectory(atPath: $0.path))?.isEmpty == true } == true, "no template: an empty folder")

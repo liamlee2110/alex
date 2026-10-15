@@ -643,23 +643,10 @@ struct DirectoryInspector: View {
 
     var body: some View {
         let entries = vault.root.flatMap { try? VaultListing.entries(in: path, root: $0) } ?? []
-        let hidden = store.isHome && Folders.isHidden(path, in: Folders.hidden(in: store.document))
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // A folder is its section on Home: look at it there, or,
-                // taken off Home, put it back.
-                if hidden {
-                    Button("Put back on Home") { store.place(path) }
-                        .buttonStyle(.solid)
-                        .keyboardShortcut(.defaultAction)
-                        .padding(.bottom, Space.l)
-                } else if Folders.section(for: path, in: store.document) != nil {
-                    Button("Show on Home") { store.openDirectory(path) }
-                        .buttonStyle(.solid)
-                        .keyboardShortcut(.defaultAction)
-                        .padding(.bottom, Space.l)
-                } else if entries.isEmpty {
-                    Text("Nothing in it yet. Its section comes onto Home with its first file.")
+                if entries.isEmpty {
+                    Text("Nothing in it yet.")
                         .font(Typography.body)
                         .foregroundStyle(Ink.muted)
                         .fixedSize(horizontal: false, vertical: true)

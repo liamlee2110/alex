@@ -2,8 +2,8 @@ import Foundation
 import Combine
 import CoreGraphics
 
-/// The open canvas: Home, the vault's own, where every folder is a section
-/// (D5, revision 20), or any other `.canvas` file; its nodes and edges, the
+/// The open canvas, one of the `.canvas` files the person made (D5,
+/// revision 54), or none while the vault has none; its nodes and edges, the
 /// selection and the viewport. Every mutation writes the file first and
 /// memory second (D2); the door and the views call the same methods (D6).
 @MainActor
@@ -179,32 +179,21 @@ final class CanvasStore: ObservableObject {
 
     // MARK: - Where
 
-    /// Home: the vault's own canvas, `<vaultname>.canvas` at the root.
-    static func homeCanvas(vault: Vault) -> String { vault.name + ".canvas" }
-    var homePath: String { Self.homeCanvas(vault: vault) }
-    var isHome: Bool { canvasPath == homePath }
-
     var title: String { canvasName(canvasPath) }
 
-    /// Home, then the open canvas if it is another: the floating
-    /// sidebar's title (revision 21).
-    var crumbs: [(name: String, path: String)] {
-        isHome ? [(vault.name, "")] : [(vault.name, ""), (title, canvasPath)]
-    }
-
-    /// The vault's canvases, the sidebar's list (revision 21): Home first,
-    /// then every other `.canvas` file by its path.
+    /// The vault's canvases, the sidebar's list: every `.canvas` file by
+    /// its path. None is made for the person and none is first (D5,
+    /// revision 54).
     var canvases: [String] {
-        [homePath] + vault.tree.flatMap(\.flattened)
-            .filter { !$0.isDirectory && $0.kind == .canvas && $0.path != homePath }
+        vault.tree.flatMap(\.flattened)
+            .filter { !$0.isDirectory && $0.kind == .canvas }
             .map(\.path)
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    /// A canvas's name: the vault's for Home, else the file's without
-    /// its extension.
+    /// A canvas's name: its file's, without the extension.
     func canvasName(_ path: String) -> String {
-        path == homePath ? vault.name : (VaultPath.name(of: path) as NSString).deletingPathExtension
+        (VaultPath.name(of: path) as NSString).deletingPathExtension
     }
 
     private var openCanvasKey: String { "openCanvas:" + (vault.root?.path ?? "") }
@@ -215,16 +204,20 @@ final class CanvasStore: ObservableObject {
         previews.removeAll()
         loadConfig()
         loadRecents()
+        looks = [:]
         guard root != nil else {
-            isOpen = false
-            document = CanvasDocument()
+            closeCanvas()
             return
         }
+        // The canvas last shown, else the first in the list, else the
+        // empty desk that asks for the first one.
         let remembered = UserDefaults.standard.string(forKey: openCanvasKey) ?? ""
-        if remembered.hasSuffix(".canvas"), remembered != homePath, vault.exists(remembered) {
+        if remembered.hasSuffix(".canvas"), vault.exists(remembered) {
             openCanvas(at: remembered)
+        } else if let first = canvases.first {
+            openCanvas(at: first)
         } else {
-            openHome()
+            closeCanvas()
         }
         if let pending = pendingReveal {
             pendingReveal = nil
@@ -232,41 +225,23 @@ final class CanvasStore: ObservableObject {
         }
     }
 
-    /// Home, laid out from the vault on the first visit and brought up to
-    /// date with it on every one after.
-    func openHome() {
-        guard let root = vault.root else { return }
-        openedRoot = root
-        Trace.log("openHome isOpen=\(isOpen) current=\(canvasPath) wantsFit=\(wantsFit) viewport=\(viewport)")
-        // Already here: keep the viewport and the selection.
-        if isOpen, isHome { return }
+    /// No canvas: the vault has none yet, or the open one went.
+    private func closeCanvas() {
         saveViewport()
+        isOpen = false
+        canvasPath = ""
         directory = ""
-        canvasPath = homePath
         selection = []
         looseFile = nil
-        load()
-        restore(rememberedViewport())
-        isOpen = true
-        UserDefaults.standard.set(canvasPath, forKey: openCanvasKey)
-    }
-
-    /// A folder is a section on Home (revision 20): Home, looking at it.
-    /// The vault's root is Home itself.
-    func openDirectory(_ dir: String) {
-        let clean = (try? VaultPath.normalise(dir)) ?? ""
-        openHome()
-        guard !clean.isEmpty else { return }
-        if let section = Folders.section(for: clean, in: document) {
-            focusRequest = section.id
-            wantsFit = false
-        }
+        document = CanvasDocument()
+        lastWritten = nil
+        unplaced = []
     }
 
     /// Any `.canvas` file.
     func openCanvas(at path: String) {
         guard vault.root != nil, vault.url(for: path) != nil else { return }
-        if path == homePath { openHome(); return }
+        if isOpen, path == canvasPath { return }
         saveViewport()
         directory = VaultPath.parent(of: path)
         canvasPath = path
@@ -278,43 +253,26 @@ final class CanvasStore: ObservableObject {
         UserDefaults.standard.set(canvasPath, forKey: openCanvasKey)
     }
 
-    /// Back to Home from any other canvas.
-    func goUp() {
-        guard !isHome else { return }
-        openHome()
-    }
-
     // MARK: - File
 
     private func load() {
         trouble = nil
-        var unread = true
         if let url = vault.url(for: canvasPath), FileManager.default.fileExists(atPath: url.path) {
             do {
                 let data = try Data(contentsOf: url)
                 document = try CanvasDocument.decode(data)
                 lastWritten = data
-                unread = false
             } catch {
                 trouble = "Couldn't read \(canvasPath): \(error)"
                 document = CanvasDocument()
                 refreshUnplaced()
-                // A Home that cannot be read is not overwritten.
+                // A canvas that cannot be read is not overwritten.
                 return
             }
         } else {
             document = CanvasDocument()
         }
-        if isHome, reconcileHome() || unread { save() }
         refreshUnplaced()
-    }
-
-    /// Home brought up to date with the vault: what has appeared placed in
-    /// its folder's section. Not an edit of anyone's, so not an undo.
-    @discardableResult
-    private func reconcileHome() -> Bool {
-        guard isHome else { return false }
-        return Folders.reconcile(&document, tree: vault.tree, home: homePath)
     }
 
     /// What the open canvas's directory holds, minus the canvas itself
@@ -325,15 +283,9 @@ final class CanvasStore: ObservableObject {
         return all.filter { $0.path != canvasPath && !$0.isDirectory }
     }
 
-    /// The tray. On Home, what was taken off it (every other file is on
-    /// it); on another canvas, its directory's files it does not show.
+    /// The files beside the open canvas it does not show.
     func refreshUnplaced() {
-        if isHome {
-            unplaced = Folders.hidden(in: document).filter(vault.exists).map {
-                VaultEntry(path: $0, isDirectory: vault.isDirectory($0))
-            }
-            return
-        }
+        guard !canvasPath.isEmpty else { unplaced = []; return }
         let placed = Set(document.nodes.compactMap(\.file))
         unplaced = directoryEntries().filter { !placed.contains($0.path) && !Self.isAppFile($0.path) }
     }
@@ -347,6 +299,7 @@ final class CanvasStore: ObservableObject {
     }
 
     func save() {
+        guard !canvasPath.isEmpty else { return }
         do {
             let data = try document.encode()
             lastWritten = data
@@ -368,7 +321,12 @@ final class CanvasStore: ObservableObject {
             lastWritten = data
             selection = selection.filter { id in doc.nodes.contains { $0.id == id } }
         }
-        if isOpen, reconcileHome() { save() }
+        // The open canvas went (renamed or removed outside): the first
+        // left, else the empty desk.
+        if isOpen, !vault.exists(canvasPath) {
+            if let first = canvases.first { openCanvas(at: first) } else { closeCanvas() }
+        }
+        looks = [:]
         refreshUnplaced()
         recents = recents.filter { vault.exists($0) }
         objectWillChange.send()
@@ -383,7 +341,7 @@ final class CanvasStore: ObservableObject {
     }
 
     /// A file opened in the panel goes to the head of Recents; a folder is
-    /// a section on Home, found in the tree, and is not one.
+    /// not one.
     func noteRecent(_ path: String) {
         guard !path.isEmpty, vault.exists(path), !vault.isDirectory(path) else { return }
         guard recents.first != path else { return }
@@ -404,6 +362,13 @@ final class CanvasStore: ObservableObject {
     /// hides): if it is the open one, take it from disk, keeping selection
     /// and viewport; either way the tray may have changed.
     func noticeDoorWrite(to path: String) {
+        // The first canvas can come through the door: the empty desk
+        // opens it.
+        if !isOpen, vault.exists(path) {
+            vault.reload()
+            openCanvas(at: path)
+            return
+        }
         if path == canvasPath, let url = vault.url(for: path),
            let data = try? Data(contentsOf: url), let doc = try? CanvasDocument.decode(data) {
             document = doc
@@ -489,12 +454,13 @@ final class CanvasStore: ObservableObject {
     }
 
     /// The sidebar or search picked a vault path: select its card on the
-    /// open canvas, else on Home, and ask the canvas to pan there. A
-    /// folder is its section on Home.
+    /// open canvas and ask the canvas to pan there; a folder, its section
+    /// if the canvas has one. Anything the canvas does not show opens in
+    /// the panel, with a verb to place it (revision 19).
     func reveal(_ rawPath: String) {
         // Asked before the vault has opened (`--select` at launch races the
         // first open): kept, and done when it has.
-        guard isOpen || vault.root == nil else {
+        guard openedRoot != nil || vault.root == nil else {
             pendingReveal = rawPath
             return
         }
@@ -516,26 +482,13 @@ final class CanvasStore: ObservableObject {
             return
         }
         let path = (try? VaultPath.normalise(rawPath)) ?? rawPath
-        if vault.isDirectory(path) {
-            openDirectory(path)
-            // A folder with no section (empty, or taken off Home) shows in
-            // the panel, with the verb to put it back if it was.
-            if Folders.section(for: path, in: document) == nil {
-                selection = []
-                looseFile = path
-                inspectorVisible = true
-            }
-            return
-        }
-        if !isOpen || (!isHome && node(forFile: path) == nil) { openHome() }
-        if let node = node(forFile: path) {
-            select(node.id)
-            focusRequest = node.id
+        let shown = vault.isDirectory(path) ? Folders.section(for: path, in: document) : node(forFile: path)
+        if let shown {
+            select(shown.id)
+            focusRequest = shown.id
             // Panning to the card is the point; a fit would zoom it away.
             wantsFit = false
         } else {
-            // Not on this canvas: the panel shows it anyway, with a verb to
-            // place it, rather than the pick doing nothing (revision 19).
             selection = []
             looseFile = path
             inspectorVisible = true
@@ -543,17 +496,9 @@ final class CanvasStore: ObservableObject {
     }
 
     /// The loose file put on the canvas where the desk is looking, then
-    /// picked, so the panel goes on showing it as its card. On Home it goes
-    /// into its folder's section, the one place it can be.
+    /// picked, so the panel goes on showing it as its card.
     func placeLooseFile() {
-        guard let path = looseFile else { return }
-        if isHome {
-            looseFile = nil
-            let node = place(path)
-            if node.kind == .file { select(node.id) }
-            focusRequest = node.id
-            return
-        }
+        guard let path = looseFile, isOpen else { return }
         let size = Placement.size(forFile: path, isDirectory: vault.isDirectory(path))
         let centre = viewport.toWorld(CGPoint(x: viewSize.width / 2 + deskInset.x,
                                               y: viewSize.height / 2 + deskInset.y))
@@ -638,9 +583,7 @@ final class CanvasStore: ObservableObject {
     /// Lay the canvas out by the first rule with a `groupBy` that covers
     /// files here: one labelled group per value, cards in rows inside,
     /// groups stacked. Groups from an earlier arrange by the same key are
-    /// replaced; anything the rule does not cover is left where it is. On
-    /// Home the groups go inside the files' folder section, what else it
-    /// holds moves under them, and the section grows to fit.
+    /// replaced; anything the rule does not cover is left where it is.
     @discardableResult
     func arrangeByConfig() -> Bool {
         let cards = document.nodes.filter { $0.kind == .file && !isDirectoryNode($0) }
@@ -678,14 +621,9 @@ final class CanvasStore: ObservableObject {
         }
         let aspect = viewSize.width > 0 && viewSize.height > 0 ? viewSize.width / viewSize.height : 1.6
         let runs = Self.columnRuns(blocks.map(\.size), aspect: aspect, gap: 60)
-        let dirs = Set(matching.map { VaultPath.parent(of: $0.file ?? "") })
-        let holder = isHome && dirs.count == 1 ? Folders.section(for: dirs.first!, in: document) : nil
-        let start = holder.map { CGPoint(x: $0.x + Folders.pad, y: $0.y + Folders.head) } ?? Placement.origin
+        let start = Placement.origin
         mutate("Arrange by \(key)") { doc in
             doc.nodes.removeAll { $0.kind == .group && $0.extra["x-arranged-by"]?.string == key }
-            let arranged = Set(matching.map(\.id))
-            let others = holder.map { Folders.contents(of: $0, in: doc).filter { !arranged.contains($0.id) } } ?? []
-            var placed = CGRect.null
             var x = start.x
             for run in runs {
                 var y = start.y
@@ -696,7 +634,6 @@ final class CanvasStore: ObservableObject {
                                            label: rule.label(for: block.value))
                     group.color = rule.color(for: block.value) ?? String((index % 6) + 1)
                     group.extra["x-arranged-by"] = .string(key)
-                    placed = placed.union(group.frame)
                     doc.insertGroup(group)
                     for (j, node) in block.nodes.enumerated() {
                         var moved = node
@@ -708,27 +645,8 @@ final class CanvasStore: ObservableObject {
                 }
                 x += (run.map { blocks[$0].size.width }.max() ?? 0) + 60
             }
-            guard let holder, !placed.isNull else { return }
-            // The rest of the section, kept as it was, under the groups.
-            let rest = others.reduce(CGRect.null) { $0.union($1.frame) }
-            if !rest.isNull {
-                let dx = start.x - rest.minX
-                let dy = placed.maxY + Folders.gap + Folders.pill - rest.minY
-                let ids = Set(others.map(\.id))
-                for i in doc.nodes.indices where ids.contains(doc.nodes[i].id) {
-                    doc.nodes[i].x += dx
-                    doc.nodes[i].y += dy
-                }
-                placed = placed.union(rest.offsetBy(dx: dx, dy: dy))
-            }
-            let made = Set(doc.nodes.filter { $0.extra["x-arranged-by"]?.string == key }.map(\.id))
-            Folders.grow(holder.id, toContain: placed, holding: made.union(arranged).union(others.map(\.id)), in: &doc)
         }
-        if let holder, let grown = document.node(holder.id) {
-            focusRequest = grown.id
-        } else {
-            wantsFit = true
-        }
+        wantsFit = true
         return true
     }
 
@@ -783,9 +701,8 @@ final class CanvasStore: ObservableObject {
         return p
     }
 
-    /// A card naming a directory: a folder card from before revision 20,
-    /// still on a canvas other than Home. Drawn as a plain card that opens
-    /// the folder's section.
+    /// A card naming a directory: a folder card from before revision 20.
+    /// Drawn as a plain card.
     func isDirectoryNode(_ node: CanvasNode) -> Bool {
         node.kind == .file && node.file.map(vault.isDirectory) == true
     }
@@ -815,79 +732,32 @@ final class CanvasStore: ObservableObject {
         commit(name, next)
     }
 
-    /// A new document, saved, with an undo that takes back what changed
-    /// and puts back any file or folder the change renamed on disk.
-    private func commit(_ name: String, _ next: CanvasDocument, renames: [Folders.Rename] = [],
-                        undoable: Bool = true) {
+    /// A new document, saved, with an undo that takes back what changed.
+    private func commit(_ name: String, _ next: CanvasDocument, undoable: Bool = true) {
+        // No canvas, no desk to edit: nothing is written anywhere.
+        guard !canvasPath.isEmpty else { return }
         let before = document
         document = next
         save()
         refreshUnplaced()
-        if undoable { registerUndo(name, CanvasDelta(from: before, to: next), renames: renames) }
+        if undoable { registerUndo(name, CanvasDelta(from: before, to: next)) }
     }
 
     /// The undo of `delta`: its inverse applied to the canvas as it is when
     /// ⌘Z is pressed, not the document from before it (revision 52), so
     /// what the door or another app wrote since stays. Its redo is the
     /// delta again, on the canvas as it is then.
-    private func registerUndo(_ name: String, _ delta: CanvasDelta, renames: [Folders.Rename] = []) {
-        guard let undoManager, !delta.isEmpty || !renames.isEmpty else { return }
+    private func registerUndo(_ name: String, _ delta: CanvasDelta) {
+        guard let undoManager, !delta.isEmpty else { return }
         undoManager.registerUndo(withTarget: self) { store in
-            let back = renames.reversed().map { Folders.Rename(from: $0.to, to: $0.from) }
-            guard store.performRenames(back) else { return }
             let undone = delta.inverse.apply(to: store.document)
             store.document = undone
             store.save()
             store.refreshUnplaced()
             store.selection = store.selection.filter { id in undone.nodes.contains { $0.id == id } }
-            store.registerUndo(name, delta.inverse, renames: back)
+            store.registerUndo(name, delta.inverse)
         }
         undoManager.setActionName(name)
-    }
-
-    /// Renames on disk, in order, all or none: a failure puts back the ones
-    /// done and says why. Other canvases, Recents and the panels follow
-    /// the paths; the open canvas is the caller's to update.
-    @discardableResult
-    func performRenames(_ renames: [Folders.Rename]) -> Bool {
-        var done: [Folders.Rename] = []
-        for rename in renames {
-            do {
-                try vault.move(rename.from, to: rename.to)
-                done.append(rename)
-            } catch {
-                for undo in done.reversed() { try? vault.move(undo.to, to: undo.from) }
-                trouble = "Couldn't move \(rename.from) to \(rename.to): \(error.localizedDescription)"
-                return false
-            }
-        }
-        guard !renames.isEmpty else { return true }
-        retargetOtherCanvases(renames)
-        for rename in renames {
-            recents = recents.map { Folders.retarget($0, rename.from, rename.to) ?? $0 }
-            pinnedPanels = pinnedPanels.map { target in
-                guard case .file(let path) = target else { return target }
-                return .file(Folders.retarget(path, rename.from, rename.to) ?? path)
-            }
-            looseFile = looseFile.map { Folders.retarget($0, rename.from, rename.to) ?? $0 }
-        }
-        UserDefaults.standard.set(recents, forKey: recentsKey)
-        previews.removeAll()
-        return true
-    }
-
-    /// Every canvas in the vault but the open one, its cards pointed at
-    /// the files' new paths, so a move on Home does not strand them.
-    private func retargetOtherCanvases(_ renames: [Folders.Rename]) {
-        let canvases = vault.tree.flatMap(\.flattened).filter { $0.kind == .canvas }.map(\.path)
-            + (isHome ? [] : [homePath])
-        for path in canvases where path != canvasPath {
-            guard let url = vault.url(for: path), let data = try? Data(contentsOf: url),
-                  var doc = try? CanvasDocument.decode(data) else { continue }
-            let before = doc
-            for rename in renames { Folders.apply(rename, to: &doc) }
-            if doc != before, let out = try? doc.encode() { try? vault.write(out, to: path) }
-        }
     }
 
     func setFrame(_ id: String, _ frame: CGRect) {
@@ -898,9 +768,8 @@ final class CanvasStore: ObservableObject {
         }
     }
 
-    /// On Home a card or section that lands in another folder's section,
-    /// or on Home's floor, takes its file or folder there on disk
-    /// (revision 20). A name already taken there refuses the whole drag.
+    /// A drag's end: where the nodes went. A section never moves a file
+    /// (D5, revision 54).
     func move(_ ids: Set<String>, by delta: CGSize) {
         var next = document
         for id in ids {
@@ -909,15 +778,7 @@ final class CanvasStore: ObservableObject {
             node.y += delta.height
             next.update(node)
         }
-        guard isHome else { commit("Move", next); return }
-        switch Folders.relocations(after: ids, in: next, exists: vault.exists) {
-        case .failure(let error):
-            trouble = error.description
-        case .success(let (moved, renames)):
-            guard performRenames(renames) else { return }
-            if !renames.isEmpty { trouble = nil }
-            commit(renames.isEmpty ? "Move" : "Move to folder", moved, renames: renames)
-        }
+        commit("Move", next)
     }
 
     @discardableResult
@@ -932,30 +793,11 @@ final class CanvasStore: ObservableObject {
         mutate(name) { $0.update(node) }
     }
 
-    /// A section's name. A folder's section renames its folder on disk,
-    /// if the name is free and a name at all.
+    /// A section's name.
     func setLabel(_ id: String, _ label: String) {
         guard var node = document.node(id), node.label != label else { return }
-        guard isHome, let dir = Folders.folder(of: node) else {
-            node.label = label
-            update(node, name: "Rename")
-            return
-        }
-        let name = label.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, !name.contains("/"), !name.hasPrefix("."), name != VaultPath.name(of: dir) else {
-            if !name.isEmpty, name != VaultPath.name(of: dir) { trouble = "A folder can't be called \(name)." }
-            return
-        }
-        let target = VaultPath.join(VaultPath.parent(of: dir), name)
-        guard !vault.exists(target) else {
-            trouble = Folders.RelocationError.taken(target).description
-            return
-        }
-        let rename = Folders.Rename(from: dir, to: target)
-        guard performRenames([rename]) else { return }
-        var next = document
-        Folders.apply(rename, to: &next)
-        commit("Rename folder", next, renames: [rename])
+        node.label = label
+        update(node, name: "Rename")
     }
 
     func setText(_ id: String, _ text: String) {
@@ -1053,25 +895,11 @@ final class CanvasStore: ObservableObject {
     }
 
     /// Off the canvas, not off the disk: the file stays and is counted as
-    /// not placed (revision 44). On Home the file, or the folder with everything
-    /// in it, is listed as taken off, so it is not placed again.
+    /// not placed (revision 44).
     func remove(_ ids: Set<String>) {
         guard !ids.isEmpty else { return }
         mutate("Remove") { doc in
-            var gone = ids
-            if isHome {
-                for node in doc.nodes where ids.contains(node.id) {
-                    if let dir = Folders.folder(of: node) {
-                        Folders.hide(dir, in: &doc)
-                        for inner in doc.nodes {
-                            let path = Folders.folder(of: inner) ?? inner.file ?? ""
-                            if path.hasPrefix(dir + "/") { gone.insert(inner.id) }
-                        }
-                    } else if node.kind == .file, let file = node.file {
-                        Folders.hide(file, in: &doc)
-                    }
-                }
-            }
+            let gone = ids
             doc.nodes.removeAll { gone.contains($0.id) }
             doc.edges.removeAll { gone.contains($0.fromNode) || gone.contains($0.toNode) }
         }
@@ -1094,22 +922,8 @@ final class CanvasStore: ObservableObject {
 
     /// Place a vault file on this canvas at a point, or at a free spot
     /// beside `near`, else beside the selection, else below everything.
-    /// On Home, with no point, a file goes into its folder's section and a
-    /// folder comes back as its section; either way it is no longer hidden.
     @discardableResult
     func place(_ path: String, at point: CGPoint? = nil, near: String? = nil, size given: CGSize? = nil) -> CanvasNode {
-        if isHome {
-            var next = document
-            Folders.unhide(path, in: &next)
-            if let point, !vault.isDirectory(path) {
-                let size = given ?? Placement.size(forFile: path, isDirectory: false)
-                next.nodes.append(CanvasNode(kind: .file, frame: CGRect(origin: point, size: size), file: path))
-            }
-            Folders.reconcile(&next, tree: vault.tree, home: homePath)
-            commit("Place", next)
-            let placed = vault.isDirectory(path) ? Folders.section(for: path, in: document) : node(forFile: path)
-            return placed ?? CanvasNode(kind: .file, frame: .zero, file: path)
-        }
         let size = given ?? Placement.size(forFile: path, isDirectory: vault.isDirectory(path))
         let anchor = near.flatMap { document.node($0)?.frame } ?? selectedNode?.frame
         let origin = point ?? Placement.freeSlot(for: size, in: document, near: anchor)
@@ -1120,13 +934,6 @@ final class CanvasStore: ObservableObject {
     func placeAllUnplaced() {
         let entries = unplaced
         guard !entries.isEmpty else { return }
-        if isHome {
-            var next = document
-            Folders.setHidden([], in: &next)
-            Folders.reconcile(&next, tree: vault.tree, home: homePath)
-            commit("Place all", next)
-            return
-        }
         mutate("Place all") { doc in
             var start = doc.bounds.isNull ? Placement.origin : CGPoint(x: Placement.origin.x, y: doc.bounds.maxY + 60)
             for node in Placement.autoLayout(entries) {
@@ -1203,8 +1010,8 @@ final class CanvasStore: ObservableObject {
     }
 
     /// A picture off the clipboard (⌘V on the desk): written as a PNG
-    /// beside the canvas — on Home into the folder section under the
-    /// view's centre — and placed there as a photo card in its own shape.
+    /// beside the canvas and placed mid-view as a photo card in its own
+    /// shape.
     /// The bytes are a file like any other (D2); the canvas only points.
     @discardableResult
     func pasteImage(png: Data, pixels: CGSize, now: Date = Date()) -> CanvasNode? {
@@ -1212,7 +1019,7 @@ final class CanvasStore: ObservableObject {
         let centre = viewport.toWorld(CGPoint(x: viewSize.width / 2, y: viewSize.height / 2))
         let slot = CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2,
                           width: size.width, height: size.height)
-        let dir = isHome ? Folders.directory(at: centre, in: document) : directory
+        let dir = directory
         let name = Placement.pastedImageName(at: now) { vault.exists(VaultPath.join(dir, $0)) }
         let path = VaultPath.join(dir, name)
         do {
@@ -1221,24 +1028,19 @@ final class CanvasStore: ObservableObject {
             trouble = "Couldn't save the pasted image: \(error)"
             return nil
         }
-        let origin = isHome ? slot.origin : Placement.freeSlot(for: size, in: document, near: slot)
+        let origin = Placement.freeSlot(for: size, in: document, near: slot)
         let node = place(path, at: origin, size: size)
         select(node.id)
         return node
     }
 
-    /// The folder a new file belongs in: on Home, the folder of the
-    /// section the selection is in (or is); elsewhere, the canvas's own.
-    var folderForNew: String {
-        guard isHome else { return directory }
-        guard let node = selectedNode else { return "" }
-        if let dir = Folders.folder(of: node) { return dir }
-        return Folders.container(of: node, in: document).flatMap(Folders.folder(of:)) ?? ""
-    }
+    /// The folder a new file belongs in: the open canvas's own.
+    var folderForNew: String { directory }
 
-    /// A new Markdown file, placed and selected: on Home in the folder
-    /// section beside the selection.
+    /// A new Markdown file beside the canvas, placed and selected. With no
+    /// canvas there is nowhere to place it, and the desk is asking for one.
     func newNote() {
+        guard isOpen else { return }
         let dir = folderForNew
         var name = "Untitled.md"
         var i = 2
@@ -1259,25 +1061,182 @@ final class CanvasStore: ObservableObject {
     }
 
     /// A new, empty canvas at the vault's root, opened (revision 21): the
-    /// sidebar's `+` beside Canvases. Written before it is shown (D2).
+    /// sidebar's `+` beside Canvases, or the first canvas the empty desk
+    /// asks for (revision 54), under the name given, else "Untitled
+    /// canvas" with the next free number. Written before it is shown (D2).
+    /// A new canvas from the `+` starts in its row's name field.
     @discardableResult
-    func newCanvas() -> String? {
+    func newCanvas(named given: String? = nil) -> String? {
         guard vault.root != nil else { return nil }
-        var name = "Untitled canvas.canvas"
-        var i = 2
-        while vault.exists(name) {
-            name = "Untitled canvas \(i).canvas"
-            i += 1
+        let path: String
+        if let given {
+            switch Self.validCanvasName(given) {
+            case .failure(let why):
+                trouble = why.description
+                return nil
+            case .success(let name):
+                path = name + ".canvas"
+                guard !vault.exists(path) else {
+                    trouble = CanvasNameError.taken(name).description
+                    return nil
+                }
+            }
+        } else {
+            var name = "Untitled canvas.canvas"
+            var i = 2
+            while vault.exists(name) {
+                name = "Untitled canvas \(i).canvas"
+                i += 1
+            }
+            path = name
         }
         do {
-            try vault.write(try CanvasDocument().encode(), to: name)
+            try vault.write(try CanvasDocument().encode(), to: path)
         } catch {
-            trouble = "Couldn't create \(name): \(error)"
+            trouble = "Couldn't create \(path): \(error)"
             return nil
         }
+        trouble = nil
         vault.reload()
-        openCanvas(at: name)
-        return name
+        openCanvas(at: path)
+        if given == nil { renaming = path }
+        return path
+    }
+
+    // MARK: - A canvas's name, icon and colour (revision 54)
+
+    /// The canvas whose row is a name field in the sidebar.
+    @Published var renaming: String?
+    /// The canvas whose icon and colour picker is open under its row.
+    @Published var lookPicking: String?
+
+    enum CanvasNameError: Error, Equatable, CustomStringConvertible {
+        case empty
+        case badName
+        case taken(String)
+
+        var description: String {
+            switch self {
+            case .empty: return "Give the canvas a name."
+            case .badName: return "A name can't contain / or : or start with a dot."
+            case .taken(let name): return "There's already a canvas called “\(name)”."
+            }
+        }
+    }
+
+    /// A canvas's name as it will be on disk, or why it cannot be.
+    static func validCanvasName(_ raw: String) -> Result<String, CanvasNameError> {
+        var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.lowercased().hasSuffix(".canvas") { name = String(name.dropLast(7)) }
+        guard !name.isEmpty else { return .failure(.empty) }
+        guard !name.hasPrefix("."), !name.contains("/"), !name.contains(":") else { return .failure(.badName) }
+        return .success(name)
+    }
+
+    /// Renames a canvas's file beside itself: the name is the file's
+    /// (D5). A name taken refuses; a change of case alone goes by a
+    /// spare name, since the volume calls the two one file. What the app
+    /// remembers for the canvas follows it. Nil when it worked, else why.
+    @discardableResult
+    func renameCanvas(_ path: String, to raw: String) -> CanvasNameError? {
+        let name: String
+        switch Self.validCanvasName(raw) {
+        case .failure(let why): return why
+        case .success(let valid): name = valid
+        }
+        let target = VaultPath.join(VaultPath.parent(of: path), name + ".canvas")
+        guard target != path else { return nil }
+        let caseOnly = target.lowercased() == path.lowercased()
+        if !caseOnly, vault.exists(target) { return .taken(name) }
+        do {
+            if caseOnly {
+                let spare = path + ".renaming"
+                try vault.move(path, to: spare)
+                try vault.move(spare, to: target)
+            } else {
+                try vault.move(path, to: target)
+            }
+        } catch {
+            trouble = "Couldn't rename \(canvasName(path)): \(error.localizedDescription)"
+            return nil
+        }
+        let defaults = UserDefaults.standard
+        let root = vault.root?.path ?? ""
+        let oldKey = "viewportCentre:" + root + ":" + path
+        if let memory = defaults.array(forKey: oldKey) {
+            defaults.set(memory, forKey: "viewportCentre:" + root + ":" + target)
+            defaults.removeObject(forKey: oldKey)
+        }
+        if path == canvasPath {
+            canvasPath = target
+            defaults.set(target, forKey: openCanvasKey)
+        }
+        looks[target] = looks.removeValue(forKey: path)
+        recents = recents.map { $0 == path ? target : $0 }
+        defaults.set(recents, forKey: recentsKey)
+        trouble = nil
+        return nil
+    }
+
+    struct CanvasLook: Equatable {
+        static let iconKey = "x-icon"
+        static let colorKey = "x-color"
+
+        var icon: String?
+        var color: String?
+
+        init(icon: String? = nil, color: String? = nil) {
+            self.icon = icon
+            self.color = color
+        }
+
+        init(_ extra: [String: JSONValue]) {
+            icon = extra[Self.iconKey]?.string.flatMap { $0.isEmpty ? nil : $0 }
+            color = extra[Self.colorKey]?.string.flatMap { $0.isEmpty ? nil : $0 }
+        }
+
+        func write(into extra: inout [String: JSONValue]) {
+            extra[Self.iconKey] = icon.map(JSONValue.string)
+            extra[Self.colorKey] = color.map(JSONValue.string)
+        }
+    }
+
+    /// Each canvas's icon and colour as read from its file, forgotten
+    /// whenever the vault changes on disk so it never outlives the file.
+    private var looks: [String: CanvasLook] = [:]
+
+    /// A canvas's icon and colour: `x-icon` and `x-color` at its file's top
+    /// level, so they travel with the file (D4's `x-` keys).
+    func look(for path: String) -> CanvasLook {
+        if isOpen, path == canvasPath { return CanvasLook(document.extra) }
+        if let known = looks[path] { return known }
+        var found = CanvasLook()
+        if let url = vault.url(for: path), let data = try? Data(contentsOf: url),
+           let doc = try? CanvasDocument.decode(data) {
+            found = CanvasLook(doc.extra)
+        }
+        looks[path] = found
+        return found
+    }
+
+    /// A canvas's icon and colour, written to its file. On the open canvas
+    /// it is an edit like any other, and undoes.
+    func setLook(_ look: CanvasLook, for path: String) {
+        guard look != self.look(for: path) else { return }
+        if isOpen, path == canvasPath {
+            mutate("Icon") { look.write(into: &$0.extra) }
+            return
+        }
+        do {
+            guard let url = vault.url(for: path) else { return }
+            var doc = try CanvasDocument.decode(try Data(contentsOf: url))
+            look.write(into: &doc.extra)
+            try vault.write(try doc.encode(), to: path)
+            looks[path] = look
+            objectWillChange.send()
+        } catch {
+            trouble = "Couldn't change \(canvasName(path)): \(error)"
+        }
     }
 
     /// A group around the selection, labelled, drawn behind it.
@@ -1403,8 +1362,8 @@ final class CanvasStore: ObservableObject {
     }
 
     /// Files dropped on the desk: a vault file is placed where it landed; a
-    /// file from elsewhere is copied in first, on Home into the folder
-    /// whose section it landed in; a web address, dragged out of a
+    /// file from elsewhere is copied in beside the canvas first; a web
+    /// address, dragged out of a
     /// browser, becomes a link card.
     func importFiles(_ urls: [URL], at world: CGPoint) {
         var point = world
@@ -1417,7 +1376,7 @@ final class CanvasStore: ObservableObject {
                 continue
             }
             var path: String
-            let dir = isHome ? Folders.directory(at: point, in: document) : directory
+            let dir = directory
             if let inside = vault.relativePath(of: url) {
                 path = inside
             } else {
@@ -1652,12 +1611,10 @@ final class CanvasStore: ObservableObject {
         } else if !bounds.intersects(visible) {
             offset = CGVector(dx: visible.midX - bounds.midX, dy: visible.midY - bounds.midY)
         }
-        let sections = Set(Folders.sections(in: document).compactMap(Folders.folder(of:)))
         let (nodes, edges) = clip.pasted(
             into: document, offset: offset,
             exists: { vault.exists($0) },
             isImage: { VaultEntry.Kind.forExtension(($0 as NSString).pathExtension) == .image },
-            keepsFolder: { isHome && vault.isDirectory($0) && !sections.contains($0) },
             copyFile: { copyImage($0) })
         guard !nodes.isEmpty else { return [] }
         var next = document
@@ -1665,12 +1622,6 @@ final class CanvasStore: ObservableObject {
             if node.kind == .group { next.insertGroup(node) } else { next.nodes.append(node) }
         }
         next.edges.append(contentsOf: edges)
-        if isHome {
-            for node in nodes {
-                if let path = Folders.folder(of: node) ?? node.file { Folders.unhide(path, in: &next) }
-            }
-            Folders.reconcile(&next, tree: vault.tree, home: homePath)
-        }
         commit("Paste", next)
         selection = Set(nodes.map(\.id)).filter { document.node($0) != nil }
         return nodes
@@ -1832,7 +1783,7 @@ final class CanvasStore: ObservableObject {
             trouble = "Couldn't create \(path): \(error)"
             return
         }
-        if isHome || dir == directory { place(path) }
+        if isOpen, dir == directory { place(path) }
         reveal(path)
     }
 

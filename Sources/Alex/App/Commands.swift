@@ -114,7 +114,7 @@ struct CanvasCommands: Commands {
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(store == nil)
             // Excalidraw's keys (revision 53), on the desk: a box being
-            // written in keeps them from acting. ⌘[ stays Back to Home.
+            // written in keeps them from acting.
             Button("Duplicate") { deskAction { $0.duplicate($0.selection) } }
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(store == nil)
@@ -138,10 +138,6 @@ struct CanvasCommands: Commands {
                 .disabled(store == nil)
             Button("Fit to contents") { store?.fit() }
                 .keyboardShortcut("1", modifiers: .command)
-                .disabled(store == nil)
-            Divider()
-            Button("Back to Home") { store?.goUp() }
-                .keyboardShortcut("[", modifiers: .command)
                 .disabled(store == nil)
         }
     }
