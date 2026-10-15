@@ -15,7 +15,7 @@
 
 ---
 
-<p align="center"><img src="docs/home.png" width="820" alt="A canvas: paper cards, and coloured sections holding notes"></p>
+<p align="center"><img src="docs/home.png" width="820" alt="The learn canvas: paper cards and coloured sections, beside a sidebar listing the canvases, each with its own icon and colour"></p>
 
 ## What it is
 
@@ -29,6 +29,8 @@ Alex knows is in the folder: the layout is a `.canvas` file in the open
 images. Git, Obsidian, a text editor and Claude read and write the same
 files, and Alex re-renders when any of them do.
 
+<p align="center"><img src="docs/first-canvas.png" width="820" alt="An empty workspace: the mascot holding a blank card, &quot;Create your first canvas&quot;, and a name field already filled in"></p>
+
 There is no AI inside Alex. Instead it opens a local
 [MCP](https://modelcontextprotocol.io) door so Claude Code, working in the
 same folder, can see what is on screen, write files into the vault, place
@@ -39,7 +41,7 @@ Alex was built to run a self-taught robotics programme: the coach (Claude)
 writes session logs, plots and notes into the repo, and the canvas shows
 where things stand. It is generic enough for any folder of notes.
 
-<p align="center"><img src="docs/roadmap.png" width="820" alt="A directory arranged into labelled groups by a frontmatter key, with dashed prerequisite edges"></p>
+<p align="center"><img src="docs/roadmap.png" width="820" alt="A canvas of competency notes arranged into labelled groups by a frontmatter key, with dashed prerequisite edges"></p>
 
 ## Features
 
@@ -169,9 +171,9 @@ where things stand. It is generic enough for any folder of notes.
   row, then **Canvases** — every canvas, with find, a new canvas and the
   canvas's `•••` — and the workspace at the foot. Double-click a canvas's
   row, or pick **Rename** from its right-click menu or the `•••`, to
-  rename it (the `.canvas` file is renamed); **Icon and colour…** picks
-  its glyph and one of six colours, kept in the file as `x-icon` and
-  `x-color`. There
+  rename it (the `.canvas` file is renamed); press a canvas's icon, or
+  pick **Icon and colour…**, to choose its glyph and one of six
+  colours, kept in the file as `x-icon` and `x-color`. There
   is no file tree: the desk is where files are, and ⌘K finds any of
   them. The toggle beside the traffic lights, or ⌘\, folds the sidebar
   into its head — the lights and the toggle, nothing else, the way
@@ -210,7 +212,7 @@ where things stand. It is generic enough for any folder of notes.
   ending on empty desk stays a drawn shape, and holding ⌘ keeps it one
   wherever it ends.
 
-<p align="center"><img src="docs/cards.png" width="820" alt="White cards inside two labelled sections, sticky notes in yellow and blue, a link card, and edges with labels"></p>
+<p align="center"><img src="docs/cards.png" width="820" alt="White cards, sticky notes in yellow and blue and a PDF inside labelled sections, two link cards, and a labelled edge"></p>
 
 <p align="center"><img src="docs/reader.png" width="820" alt="A PDF pinned in the panel stack beside a note with wikilinks, a highlight, an Info block and backlinks"></p>
 
@@ -242,7 +244,7 @@ A session in the robotics vault ends with the coach writing the artifacts
 through `write_artifact`, so a new plot lands in the right folder and on
 the open canvas, and calling `focus`, so the app pans to it.
 
-<p align="center"><img src="docs/door.png" width="820" alt="A plot written through the door, placed on a canvas and focused"></p>
+<p align="center"><img src="docs/door.png" width="820" alt="A plot written through the door, placed on a canvas beside the competency note it belongs to"></p>
 
 Everything the door can do, Claude can also do by writing files directly,
 because the watcher renders whatever changes. The door adds what files

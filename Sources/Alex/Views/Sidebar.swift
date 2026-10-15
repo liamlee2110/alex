@@ -359,8 +359,8 @@ enum CanvasVerbs {
     }
 }
 
-/// A canvas's row: its icon in its colour and its name, or, while it is
-/// renamed, its name as a field (Figma's page rename). ↩ or leaving the
+/// A canvas's row: its icon in its colour — pressed alone, the icon and
+/// colour picker (revision 55) — and its name, or, while it is renamed, its name as a field (Figma's page rename). ↩ or leaving the
 /// field renames the file; Esc keeps the name.
 struct CanvasRow: View {
     @ObservedObject var store: CanvasStore
@@ -376,7 +376,9 @@ struct CanvasRow: View {
                        label: store.canvasName(path),
                        active: path == store.canvasPath,
                        glyphInk: CanvasRow.ink(look),
-                       hint: path) {
+                       hint: store.canvasName(path),
+                       glyphAction: { store.lookPicking = store.lookPicking == path ? nil : path },
+                       glyphLabel: "Change icon and colour") {
                 store.openCanvas(at: path)
             }
             // A Button's own action fires at once; the double-click
@@ -527,17 +529,29 @@ struct SidebarRow: View {
     /// kind, as in the tree.
     var glyphInk: Color = Ink.icon
     var hint: String? = nil
+    /// The glyph pressed on its own (revision 55): a canvas's icon opens
+    /// its icon and colour picker, as a chat's or a page's icon does in
+    /// ChatGPT and Notion. Named by `glyphLabel`.
+    var glyphAction: (() -> Void)? = nil
+    var glyphLabel = ""
     let action: () -> Void
 
     @State private var hovered = false
 
+    // A canvas's colour stays on its glyph when it is open.
+    private var ink: Color { active && glyphInk == Ink.icon ? Ink.primary : glyphInk }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: Space.s) {
-                // A canvas's colour stays on its glyph when it is open.
-                GlyphImage(symbol)
-                    .foregroundStyle(active && glyphInk == Ink.icon ? Ink.primary : glyphInk)
-                    .frame(width: 16)
+                if glyphAction == nil {
+                    GlyphImage(symbol)
+                        .foregroundStyle(ink)
+                        .frame(width: 16)
+                } else {
+                    // Room for the glyph's own button, laid over the row.
+                    Color.clear.frame(width: 16, height: 1)
+                }
                 Text(label)
                     .font(active ? Typography.control : Typography.body)
                     .foregroundStyle(Ink.primary)
@@ -557,6 +571,12 @@ struct SidebarRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .leading) {
+            if let glyphAction {
+                IconButton(symbol: symbol, label: glyphLabel, size: .small, ink: ink, action: glyphAction)
+                    .padding(.leading, Space.s - (IconButton.Size.small.side.width - 16) / 2)
+            }
+        }
         .onHover { hovered = $0 }
         .animation(Motion.quick, value: hovered)
         .tooltip(hint ?? label, name: label)

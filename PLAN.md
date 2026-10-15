@@ -1046,6 +1046,12 @@ every canvas, names it and marks it.
   the choice is `x-icon` and `x-color` at the canvas file's top level,
   so it travels with the file and other JSON Canvas apps ignore it (D4).
   The glyph wears the colour; with none it is the ink of any row.
+Revision 55 (2026-10-15, asked by Liam): the icon is pressed where it
+is. A canvas row's glyph is its own `IconButton`, laid over the row's
+leading edge: a press opens (or closes) that canvas's icon and colour
+picker without opening the canvas, as a chat's or a page's icon does in
+ChatGPT and Notion; the rest of the row opens the canvas as before. The
+row's tooltip is the canvas's name rather than its file's path.
 
 ## 0. One paragraph
 
