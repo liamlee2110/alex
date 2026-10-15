@@ -61,10 +61,12 @@ where things stand. It is generic enough for any folder of notes.
   back to Select. ⇧ while you drag keeps the proportions: a square, a
   circle, a line on a 15° step. An arrow dragged from one card to another is a
   connection; anywhere else it is a shape. A shape is outline or filled,
-  solid or dashed (a box starts dashed), in any of the six colours, with an arrowhead at either
+  solid, dashed or dotted (a box starts dashed), thin, regular or bold, in
+  any of four colours, with an arrowhead at either
   end of a line, set in the **style panel** that floats at the desk's
   left while anything is selected, as Excalidraw's does: colour, fill,
-  stroke, arrowheads, font, size, send to back or bring to front,
+  stroke width and style, arrowheads, font, size, corners, order a step
+  or all the way (⌘[ ⌘], with ⌥ to the back or front),
   duplicate, fold and remove, each shown when the whole selection takes
   it; double-click one, or select it and press ↩, to write in it, and
   Esc or ⌘↩ to finish with it still selected. A shape is a `text` node with `x-` keys in the `.canvas`

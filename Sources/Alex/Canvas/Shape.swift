@@ -87,9 +87,9 @@ enum TextSize: Double, CaseIterable {
     }
 }
 
-/// How round a picture's corners are (revision 45), in desk points under
-/// `x-radius`: square, the card's own 8 (no key), or rounder. A picture
-/// has no paper round it, so its corners are the reader's to choose.
+/// How round a picture's corners are (revision 45), and a rectangle's
+/// (revision 55, Excalidraw's edges), in desk points under `x-radius`:
+/// square, the card's own 8 (no key), or rounder.
 enum CornerSize: Double, CaseIterable {
     case none = 0, small = 8, medium = 16, large = 32
 
@@ -116,6 +116,41 @@ enum CornerSize: Double, CaseIterable {
     init(points: Double?) {
         let p = points ?? CornerSize.small.rawValue
         self = CornerSize.allCases.min { abs($0.rawValue - p) < abs($1.rawValue - p) }!
+    }
+}
+
+/// How heavy a shape's stroke is (revision 55): Excalidraw's thin, bold
+/// and extra bold, under `x-stroke-width`; no key is the regular 2.
+enum StrokeWidth: Double, CaseIterable {
+    case thin = 1, regular = 2, bold = 4
+
+    var title: String {
+        switch self {
+        case .thin: return "Thin"
+        case .regular: return "Regular"
+        case .bold: return "Bold"
+        }
+    }
+
+    /// The preset nearest a width read from a file, which may hold any number.
+    init(points: Double?) {
+        let p = points ?? StrokeWidth.regular.rawValue
+        self = StrokeWidth.allCases.min { abs($0.rawValue - p) < abs($1.rawValue - p) }!
+    }
+}
+
+/// How a shape's stroke is drawn (revision 55): Excalidraw's solid, dashed
+/// and dotted, under `x-stroke-style`. Revision 51's `x-dashed: true` is
+/// still read as dashed; a press in the style panel writes the new key.
+enum StrokePattern: String, CaseIterable {
+    case solid, dashed, dotted
+
+    var title: String {
+        switch self {
+        case .solid: return "Solid"
+        case .dashed: return "Dashed"
+        case .dotted: return "Dotted"
+        }
     }
 }
 
@@ -195,9 +230,12 @@ struct StyleScope: Equatable {
     /// Outline or filled: a shape that is not a line.
     var fill: Bool
     var filled: Bool?
-    /// Solid or dashed: any shape, a line included.
+    /// The stroke's pattern and width: any shape, a line included.
     var stroke: Bool
-    var dashed: Bool?
+    var pattern: StrokePattern?
+    var width: StrokeWidth?
+    /// Solid or dashed, as revision 39 said it: dashed or not.
+    var dashed: Bool? { pattern.map { $0 == .dashed } }
     /// Arrowheads: lines only.
     var arrowheads: Bool
     var fromArrow: Bool?
@@ -216,7 +254,7 @@ struct StyleScope: Equatable {
     /// Duplicate: a sticky, a text box, a shape or a link; a file has one
     /// card on a canvas.
     var duplicable: Bool
-    /// Corners: pictures alone (revision 45).
+    /// Corners: pictures (revision 45) and rectangles (revision 55).
     var corners: Bool
     var corner: CornerSize?
     /// Fold: files' cards but a picture's (the view leaves a folder's out).
@@ -235,7 +273,8 @@ struct StyleScope: Equatable {
         fill = all { $0.shape != nil && $0.shape != .text && $0.shape != .line }
         filled = fill ? shared(\.filled) : nil
         stroke = all { $0.shape != nil && $0.shape != .text }
-        dashed = stroke ? shared(\.dashed) : nil
+        pattern = stroke ? shared(\.strokePattern) : nil
+        width = stroke ? shared { StrokeWidth(points: $0.strokeWidth) } : nil
         arrowheads = all { $0.shape == .line }
         fromArrow = arrowheads ? shared { $0.lineFromEnd == "arrow" } : nil
         toArrow = arrowheads ? shared { $0.lineToEnd == "arrow" } : nil
@@ -249,7 +288,7 @@ struct StyleScope: Equatable {
         duplicable = all { $0.kind == .text || $0.kind == .link }
         foldable = all { $0.kind == .file && !$0.isImage }
         folded = foldable ? shared(\.folded) : nil
-        corners = all { $0.isImage }
+        corners = all { $0.takesCorners }
         corner = corners ? shared { CornerSize(points: $0.cornerRadius) } : nil
     }
 }
@@ -339,11 +378,37 @@ extension CanvasNode {
         set { extra["x-fill"] = newValue ? .bool(true) : nil }
     }
 
-    /// A dashed outline, under `x-dashed`.
-    var dashed: Bool {
-        get { extra["x-dashed"]?.bool ?? false }
-        set { extra["x-dashed"] = newValue ? .bool(true) : nil }
+    /// The stroke's pattern (revision 55), under `x-stroke-style`, or
+    /// revision 51's `x-dashed`; no key is solid. Writing it clears the old key.
+    var strokePattern: StrokePattern {
+        get {
+            if let raw = extra["x-stroke-style"]?.string, let pattern = StrokePattern(rawValue: raw) { return pattern }
+            return extra["x-dashed"]?.bool == true ? .dashed : .solid
+        }
+        set {
+            extra["x-dashed"] = nil
+            extra["x-stroke-style"] = newValue == .solid ? nil : .string(newValue.rawValue)
+        }
     }
+
+    /// A dashed outline: the pattern, said as revision 51 did.
+    var dashed: Bool {
+        get { strokePattern == .dashed }
+        set { strokePattern = newValue ? .dashed : .solid }
+    }
+
+    /// The stroke's width in desk points (revision 55), under
+    /// `x-stroke-width`; no key is `StrokeWidth.regular`.
+    var strokeWidth: Double? {
+        get { extra["x-stroke-width"]?.double }
+        set { extra["x-stroke-width"] = newValue.map { .number($0) } }
+    }
+
+    /// The width the stroke is drawn at.
+    var strokeLineWidth: CGFloat { CGFloat(strokeWidth ?? StrokeWidth.regular.rawValue) }
+
+    /// A picture's card or a rectangle: what the Corners group rounds.
+    var takesCorners: Bool { isImage || shape == .rectangle }
 
     /// A line's two ends as fractions of its frame, under `x-points`, so a
     /// resize stretches the line with its box. Left to right across the

@@ -96,6 +96,23 @@ enum Stroke {
     static let shape: CGFloat = 2
     static let dash: [CGFloat] = [8, 6]
     static let arrowhead: CGFloat = 12
+
+    /// A stroke's pattern at a width (revision 55): the dash grows with a
+    /// bold stroke so it still reads as dashes; a dot is a round cap with
+    /// nothing between, three widths apart.
+    static func pattern(_ pattern: StrokePattern, width: CGFloat) -> [CGFloat] {
+        let scale = max(1, width / shape)
+        switch pattern {
+        case .solid: return []
+        case .dashed: return dash.map { $0 * scale }
+        case .dotted: return [0, max(width * 3, 4)]
+        }
+    }
+
+    /// The style panel's stroke cells draw a short line, this long, with
+    /// the pattern scaled down to fit it.
+    static let sample: CGFloat = 18
+    static let sampleDash: [CGFloat] = [4, 3]
 }
 
 /// What a selection wears on the desk (revision 26), in screen points so

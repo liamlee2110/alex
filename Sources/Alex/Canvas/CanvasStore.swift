@@ -1320,7 +1320,17 @@ final class CanvasStore: ObservableObject {
     }
 
     func setDashed(_ ids: Set<String>, _ dashed: Bool) {
-        setShape(ids, name: dashed ? "Dash" : "Solid line") { $0.dashed = dashed }
+        setStrokePattern(ids, dashed ? .dashed : .solid)
+    }
+
+    /// Solid, dashed or dotted (revision 55), for every shape in a selection.
+    func setStrokePattern(_ ids: Set<String>, _ pattern: StrokePattern) {
+        setShape(ids, name: pattern.title + " line") { $0.strokePattern = pattern }
+    }
+
+    /// Thin, regular or bold (revision 55); regular is written as no key.
+    func setStrokeWidth(_ ids: Set<String>, _ width: StrokeWidth) {
+        setShape(ids, name: "Stroke width") { $0.strokeWidth = width == .regular ? nil : width.rawValue }
     }
 
     /// An arrowhead on, or off, either end of a line.
@@ -1449,7 +1459,7 @@ final class CanvasStore: ObservableObject {
         guard !ids.isEmpty else { return }
         mutate("Corners") { doc in
             for id in ids {
-                guard var node = doc.node(id), node.isImage else { continue }
+                guard var node = doc.node(id), node.takesCorners else { continue }
                 node.cornerRadius = size == .small ? nil : size.rawValue
                 doc.update(node)
             }
@@ -1503,6 +1513,35 @@ final class CanvasStore: ObservableObject {
     /// The selection drawn under everything else: its nodes moved to the
     /// head of the list.
     func sendToBack(_ ids: Set<String>) { reorder(ids, name: "Send to back", toFront: false) }
+
+    /// The selection a step up or down the list (revision 55, Excalidraw's
+    /// ⌘] and ⌘[): each run of selected nodes swaps with the one node past
+    /// it. Sections keep to their own layer and are stepped over.
+    func bringForward(_ ids: Set<String>) { step(ids, name: "Bring forward", forward: true) }
+    func sendBackward(_ ids: Set<String>) { step(ids, name: "Send backward", forward: false) }
+
+    private func step(_ ids: Set<String>, name: String, forward: Bool) {
+        let moving = ids.filter { document.node($0)?.kind != .group }
+        guard !moving.isEmpty else { return }
+        mutate(name) { doc in
+            doc.nodes = Self.stepped(doc.nodes, moving: moving, forward: forward)
+        }
+    }
+
+    /// The nodes with each run of `moving` swapped past its neighbour,
+    /// sections left in their places. Pure, for the canvas suite.
+    nonisolated static func stepped(_ nodes: [CanvasNode], moving: Set<String>, forward: Bool) -> [CanvasNode] {
+        let slots = nodes.indices.filter { nodes[$0].kind != .group }
+        var layer = slots.map { nodes[$0] }
+        let order = forward ? Array(stride(from: layer.count - 2, through: 0, by: -1)) : Array(layer.indices.dropFirst())
+        for i in order {
+            let j = forward ? i + 1 : i - 1
+            if moving.contains(layer[i].id), !moving.contains(layer[j].id) { layer.swapAt(i, j) }
+        }
+        var out = nodes
+        for (slot, node) in zip(slots, layer) { out[slot] = node }
+        return out
+    }
 
     private func reorder(_ ids: Set<String>, name: String, toFront: Bool) {
         let moving = ids.filter { document.node($0)?.kind != .group }

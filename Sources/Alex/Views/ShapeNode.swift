@@ -34,10 +34,14 @@ struct ShapeNodeView: View {
     /// section's border wears.
     private var stroke: Color { node.color == nil ? Ink.primary : Hepta.label(node.color) }
     private var fill: Color { node.filled ? Hepta.fill(node.color) : .clear }
+    /// Its width and pattern (revision 55).
+    private var width: CGFloat { node.strokeLineWidth }
     private var style: StrokeStyle {
-        StrokeStyle(lineWidth: Stroke.shape, lineCap: .round, lineJoin: .round,
-                    dash: node.dashed ? Stroke.dash : [])
+        StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round,
+                    dash: Stroke.pattern(node.strokePattern, width: width))
     }
+    /// A rectangle's corners (revision 55): the card's own unless it says.
+    private var radius: CGFloat { CGFloat(node.cornerRadius ?? Double(Radius.card)) }
 
     var body: some View {
         ZStack {
@@ -47,13 +51,13 @@ struct ShapeNodeView: View {
                     let ends = Self.endpoints(node, in: geo.size)
                     Self.segment(ends.from, ends.to).stroke(stroke, style: style)
                     if node.lineToEnd == "arrow" {
-                        Self.arrowhead(at: ends.to, from: ends.from).fill(stroke)
+                        Self.arrowhead(at: ends.to, from: ends.from, width: width).fill(stroke)
                     }
                     if node.lineFromEnd == "arrow" {
-                        Self.arrowhead(at: ends.from, from: ends.to).fill(stroke)
+                        Self.arrowhead(at: ends.from, from: ends.to, width: width).fill(stroke)
                     }
                 } else if kind != .text {
-                    let path = Self.outline(kind, in: box.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2))
+                    let path = Self.outline(kind, in: box.insetBy(dx: width / 2, dy: width / 2), radius: radius)
                     path.fill(fill)
                     path.stroke(stroke, style: style)
                 }
@@ -62,7 +66,7 @@ struct ShapeNodeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(HitArea(kind: kind, points: node.linePoints, whole: takesInside,
-                              reach: Handle.strokeHit / max(zoom, 0.01)))
+                              reach: Handle.strokeHit / max(zoom, 0.01), radius: radius))
     }
 
     /// Where a press takes the shape (revision 53), Excalidraw's rule: a
@@ -83,6 +87,7 @@ struct ShapeNodeView: View {
         let points: [CGPoint]
         let whole: Bool
         let reach: CGFloat
+        var radius: CGFloat = Radius.card
 
         func path(in rect: CGRect) -> Path {
             if whole { return Path(rect) }
@@ -91,7 +96,8 @@ struct ShapeNodeView: View {
                 outline = ShapeNodeView.segment(CGPoint(x: points[0].x * rect.width, y: points[0].y * rect.height),
                                                 CGPoint(x: points[1].x * rect.width, y: points[1].y * rect.height))
             } else {
-                outline = ShapeNodeView.outline(kind, in: rect.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2))
+                outline = ShapeNodeView.outline(kind, in: rect.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2),
+                                                radius: radius)
             }
             return outline.strokedPath(StrokeStyle(lineWidth: reach * 2, lineCap: .round, lineJoin: .round))
         }
@@ -192,10 +198,10 @@ struct ShapeNodeView: View {
 
     // MARK: - Geometry
 
-    static func outline(_ kind: ShapeKind, in rect: CGRect) -> Path {
+    static func outline(_ kind: ShapeKind, in rect: CGRect, radius: CGFloat = Radius.card) -> Path {
         switch kind {
         case .rectangle:
-            return Path(roundedRect: rect, cornerRadius: Radius.card)
+            return Path(roundedRect: rect, cornerRadius: min(radius, min(rect.width, rect.height) / 2))
         case .ellipse:
             return Path(ellipseIn: rect)
         case .diamond:
@@ -226,8 +232,9 @@ struct ShapeNodeView: View {
 
     /// The edge layer's arrowhead, as a path: a filled triangle whose tip
     /// is at `tip`, pointing away from `tail`.
-    static func arrowhead(at tip: CGPoint, from tail: CGPoint) -> Path {
-        let size = Stroke.arrowhead
+    static func arrowhead(at tip: CGPoint, from tail: CGPoint, width: CGFloat = Stroke.shape) -> Path {
+        // A heavier line takes a larger head (revision 55).
+        let size = Stroke.arrowhead * max(1, width / Stroke.shape * 0.75)
         let dx = tip.x - tail.x, dy = tip.y - tail.y
         let len = max(hypot(dx, dy), 0.001)
         let ux = dx / len, uy = dy / len

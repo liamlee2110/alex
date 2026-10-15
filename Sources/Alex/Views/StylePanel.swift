@@ -5,11 +5,13 @@ import SwiftUI
 /// rest. Every way a node can be styled is here and nowhere else — the
 /// shape style bar of revision 32 and the node menu's style submenus went
 /// into it — so a selection is styled from one place. Each group shows
-/// when every selected node takes it (`StyleScope`): colour for anything;
-/// outline or filled and solid or dashed for a shape; arrowheads for a
-/// line; the face for words on the desk and a note's card; the size for
-/// words on the desk and where they sit (revision 47); a picture's corners; the order for anything but a section; and the
-/// verbs, duplicate, fold and remove. A cell wears the grey square while
+/// when every selected node takes it (`StyleScope`): colour for anything,
+/// none and four (revision 55); outline or filled for a shape; the
+/// stroke's width and pattern for any shape (revision 55); arrowheads for
+/// a line; the face for words on the desk and a note's card; the size for
+/// words on the desk and where they sit (revision 47); the corners of a
+/// picture and a rectangle; the order, a step or all the way, for
+/// anything but a section; and the verbs, duplicate, fold and remove. A cell wears the grey square while
 /// the whole selection wears it, and none does where the selection
 /// differs. It stands under the sidebar's head row, clear of its card.
 struct StylePanel: View {
@@ -34,9 +36,21 @@ struct StylePanel: View {
                 }
             }
             if scope.stroke {
-                group("Stroke") {
-                    cell(.minus, "Solid", active: scope.dashed == false) { store.setDashed(ids, false) }
-                    cell(.squareDashed, "Dashed", active: scope.dashed == true) { store.setDashed(ids, true) }
+                group("Stroke width") {
+                    ForEach(StrokeWidth.allCases, id: \.self) { width in
+                        StrokeCell(width: CGFloat(width.rawValue), pattern: .solid, label: width.title,
+                                   active: scope.width == width) {
+                            store.setStrokeWidth(ids, width)
+                        }
+                    }
+                }
+                group("Stroke style") {
+                    ForEach(StrokePattern.allCases, id: \.self) { pattern in
+                        StrokeCell(width: Stroke.shape, pattern: pattern, label: pattern.title,
+                                   active: scope.pattern == pattern) {
+                            store.setStrokePattern(ids, pattern)
+                        }
+                    }
                 }
             }
             if scope.arrowheads {
@@ -87,8 +101,10 @@ struct StylePanel: View {
             }
             if scope.order {
                 group("Order") {
-                    cell(.sendToBack, "Send to back") { store.sendToBack(ids) }
-                    cell(.bringToFront, "Bring to front") { store.bringToFront(ids) }
+                    cell(.arrowDownToLine, "Send to back", shortcut: "⌘⌥[") { store.sendToBack(ids) }
+                    cell(.arrowDown, "Send backward", shortcut: "⌘[") { store.sendBackward(ids) }
+                    cell(.arrowUp, "Bring forward", shortcut: "⌘]") { store.bringForward(ids) }
+                    cell(.arrowUpToLine, "Bring to front", shortcut: "⌘⌥]") { store.bringToFront(ids) }
                 }
             }
             group("Actions") {
@@ -147,6 +163,36 @@ struct Swatch: View {
         .buttonStyle(IconButtonStyle(active: active ? .well : nil, radius: Radius.control))
         .tooltip(name, name: name)
         .accessibilityLabel(name)
+        .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// A stroke's width or pattern as a short line drawn at it (revision 55),
+/// as Excalidraw's cells show theirs: a sample, like a colour's swatch,
+/// rather than an icon.
+private struct StrokeCell: View {
+    let width: CGFloat
+    let pattern: StrokePattern
+    let label: String
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Canvas { context, size in
+                var line = Path()
+                line.move(to: CGPoint(x: (size.width - Stroke.sample) / 2, y: size.height / 2))
+                line.addLine(to: CGPoint(x: (size.width + Stroke.sample) / 2, y: size.height / 2))
+                let dash: [CGFloat] = pattern == .dashed ? Stroke.sampleDash : Stroke.pattern(pattern, width: width)
+                context.stroke(line, with: .color(active ? Ink.primary : Ink.icon),
+                               style: StrokeStyle(lineWidth: width, lineCap: pattern == .dashed ? .butt : .round,
+                                                  dash: dash))
+            }
+            .frame(width: IconButton.Size.regular.side.width, height: IconButton.Size.regular.side.height)
+        }
+        .buttonStyle(IconButtonStyle(active: active ? .well : nil, radius: Radius.control))
+        .tooltip(label, name: label)
+        .accessibilityLabel(label)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
     }
 }

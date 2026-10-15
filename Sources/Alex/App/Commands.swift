@@ -121,6 +121,12 @@ struct CanvasCommands: Commands {
             Button("Bring to front") { deskAction { $0.bringToFront($0.selection) } }
                 .keyboardShortcut("]", modifiers: [.command, .option])
                 .disabled(store == nil)
+            Button("Bring forward") { deskAction { $0.bringForward($0.selection) } }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(store == nil)
+            Button("Send backward") { deskAction { $0.sendBackward($0.selection) } }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(store == nil)
             Button("Send to back") { deskAction { $0.sendToBack($0.selection) } }
                 .keyboardShortcut("[", modifiers: [.command, .option])
                 .disabled(store == nil)

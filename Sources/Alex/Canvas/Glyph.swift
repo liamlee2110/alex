@@ -99,8 +99,11 @@ enum Glyph: String, CaseIterable, Sendable {
     case moveLeft = "move-left"
     case moveRight = "move-right"
     case pencil
-    case bringToFront = "bring-to-front"
-    case sendToBack = "send-to-back"
+    // The style panel's order (revision 55), Excalidraw's four.
+    case arrowDown = "arrow-down"
+    case arrowUp = "arrow-up"
+    case arrowDownToLine = "arrow-down-to-line"
+    case arrowUpToLine = "arrow-up-to-line"
     case chevronsDownUp = "chevrons-down-up"
 
     // Words on the desk: their size (revision 33).

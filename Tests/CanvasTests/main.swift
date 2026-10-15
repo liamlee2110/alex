@@ -1061,6 +1061,50 @@ MainActor.assumeIsolated { cameraTests() }
     check(words.colourShared && words.colour == "3", "a sticky's colour is read")
     check(StyleScope([]).isEmpty && !StyleScope([]).order, "an empty selection takes nothing")
 
+    // Revision 55: stroke width and pattern, a rectangle's corners.
+    store.setStrokeWidth([box.id, line.id], .bold)
+    tick()
+    check(node(box.id).strokeWidth == 4 && node(line.id).strokeWidth == 4 && StyleScope([node(box.id), node(line.id)]).width == .bold,
+          "a bold stroke is written over a selection and read back")
+    store.setStrokeWidth([box.id, line.id], .regular)
+    tick()
+    check(node(box.id).extra["x-stroke-width"] == nil, "the regular width writes no key")
+    store.setStrokePattern([box.id], .dotted)
+    tick()
+    check(node(box.id).strokePattern == .dotted && node(box.id).extra["x-stroke-style"]?.string == "dotted"
+          && node(box.id).extra["x-dashed"] == nil, "dotted is x-stroke-style, and the old key goes")
+    var legacy = node(box.id)
+    legacy.extra["x-stroke-style"] = nil
+    legacy.extra["x-dashed"] = .bool(true)
+    check(legacy.strokePattern == .dashed, "revision 51's x-dashed still reads as dashed")
+    store.setStrokePattern([box.id], .dashed)
+    tick()
+    check(StyleScope([node(box.id)]).corners && StyleScope([node(box.id)]).corner == .small
+          && !StyleScope([node(line.id)]).corners, "a rectangle takes corners, the card's own to start; a line none")
+    store.setCorners([box.id], .none)
+    tick()
+    check(node(box.id).cornerRadius == 0, "a rectangle's corners can be squared")
+    store.setCorners([box.id], .small)
+    tick()
+    check(node(box.id).cornerRadius == nil, "the card's own corners write no key")
+
+    // One step in the order, sections left in their places.
+    func n(_ id: String, _ kind: CanvasNode.Kind = .text) -> CanvasNode {
+        var made = CanvasNode.shape(.rectangle, frame: .zero)
+        made.id = id
+        made.kind = kind
+        return made
+    }
+    let row = [n("a"), n("g", .group), n("b"), n("c"), n("d")]
+    check(CanvasStore.stepped(row, moving: ["a"], forward: true).map(\.id) == ["b", "g", "a", "c", "d"],
+          "forward steps over the next node, not a section")
+    check(CanvasStore.stepped(row, moving: ["b", "c"], forward: true).map(\.id) == ["a", "g", "d", "b", "c"],
+          "a run steps forward together")
+    check(CanvasStore.stepped(row, moving: ["d"], forward: true).map(\.id) == row.map(\.id),
+          "the front node stays at the front")
+    check(CanvasStore.stepped(row, moving: ["c", "d"], forward: false).map(\.id) == ["a", "g", "c", "d", "b"],
+          "a run steps backward together")
+
     store.setLineEnds([line.id, box.id], from: true)
     tick()
     check(node(line.id).lineFromEnd == "arrow" && node(box.id).lineFromEnd == nil,

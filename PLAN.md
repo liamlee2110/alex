@@ -740,9 +740,10 @@ canvas), fold for a file's card but a picture's (revision 45, which
 adds **Corners** for pictures), and remove. A cell wears the grey
 square while the whole selection wears it, and none does where the
 selection differs; a press applies to the whole selection, arrowheads
-to its lines. Excalidraw's opacity, stroke width and sloppiness have
-no place in the file (D4) and are not drawn; text alignment came in
-revision 47. One verb
+to its lines. Excalidraw's opacity and sloppiness are not drawn;
+text alignment came in revision 47, stroke width, a dotted stroke, a
+rectangle's corners and one-step order in revision 56, which also cut
+the colours to four and none. One verb
 per place (revision 19): the shape style bar of revision 32 goes, and
 the node menu keeps fold, the panel, Finder and remove and loses its
 colour, fill, stroke, arrowhead, font and size items; the format bar's
@@ -1052,6 +1053,36 @@ leading edge: a press opens (or closes) that canvas's icon and colour
 picker without opening the canvas, as a chat's or a page's icon does in
 ChatGPT and Notion; the rest of the row opens the canvas as before. The
 row's tooltip is the canvas's name rather than its file's path.
+
+Revision 56 (2026-10-15, asked by Liam, with Excalidraw's properties
+panel beside Alex's): fewer colours, and the rest of Excalidraw's panel
+that a JSON Canvas file can hold under `x-` keys (D4).
+- **Colour: none and four.** Red, yellow, green and blue, as Excalidraw
+  offers four and none; orange and purple left the style panel and the
+  canvas icon picker of revision 54, which share `NodeMenu.colours`. A
+  file that says "2" or "6" is still drawn in it.
+- **Stroke width**: thin, regular and bold (Excalidraw's 1, 2 and 4),
+  under `x-stroke-width`, regular written as no key; a bold line's
+  arrowhead grows with it. **Stroke style**: solid, dashed and dotted,
+  under `x-stroke-style`; revision 51's `x-dashed: true` is still read
+  as dashed, and a press writes the new key in its place. Both are for
+  any shape, a line included, and their cells are short lines drawn at
+  the width and pattern, as the colours are swatches, not icons.
+- **Corners for rectangles.** Excalidraw's edges: the Corners group of
+  revision 45 now shows for rectangles too, under the same `x-radius`
+  (0, the card's own 8 as no key, 16, 32).
+- **Order, a step at a time.** Send to back, send backward, bring
+  forward, bring to front, with Excalidraw's arrows; ⌘[ and ⌘] (free
+  since revision 54 took Back to Home away) move a step, ⌘⌥[ and ⌘⌥]
+  all the way. A step swaps each run of selected nodes with the one node
+  past it in the file's list; sections keep their places
+  (`CanvasStore.stepped`, tested).
+- Not taken: opacity (a slider is a new control for little), sloppiness
+  (no hand-drawn renderer), separate stroke and background colours (one
+  colour paints both, Heptabase's look), vertical text alignment,
+  arrowhead kinds and the element link.
+`--select-all on` selects every node a second in, so a snapshot shows
+the panel without a click.
 
 ## 0. One paragraph
 

@@ -704,9 +704,11 @@ struct GroupNodeView: View {
 /// style panel's, said once (revision 39).
 @MainActor
 enum NodeMenu {
-    /// The colours a node can wear: Obsidian's preset codes, by name.
-    static let colours: [(String, String?)] = [("None", nil), ("Red", "1"), ("Orange", "2"), ("Yellow", "3"),
-                                                ("Green", "4"), ("Blue", "5"), ("Purple", "6")]
+    /// The colours a node can be given: none and four of Obsidian's preset
+    /// codes, by name, as Excalidraw offers four and none (revision 55).
+    /// Orange ("2") and purple ("6") are still drawn where a file has them.
+    static let colours: [(String, String?)] = [("None", nil), ("Red", "1"), ("Yellow", "3"),
+                                                ("Green", "4"), ("Blue", "5")]
 
     @MenuBuilder
     static func items(for node: CanvasNode, store: CanvasStore) -> [MenuItem] {

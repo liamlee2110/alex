@@ -126,6 +126,11 @@ struct MainWindowView: View {
                 return [meta.title, meta.author, meta.provider].compactMap { $0 }
             }
             if let path = launchSelection { store.reveal(path) }
+            // `--select-all on`: every node selected, so a snapshot shows
+            // the style panel without a click (revision 55).
+            if Launch.value(after: "--select-all") == "on" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { store.selectAll() }
+            }
             // `--arrange <canvas>`: open a canvas and lay it out by its
             // rule, for a scripted check of canvas.config.json.
             if let canvas = Launch.value(after: "--arrange") {
