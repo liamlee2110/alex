@@ -31,12 +31,30 @@ enum VaultPath {
     static func resolve(_ raw: String, in root: URL) throws -> URL {
         let relative = try normalise(raw)
         let url = relative.isEmpty ? root : root.appendingPathComponent(relative)
-        let rootPath = root.resolvingSymlinksInPath().path
-        let realPath = url.resolvingSymlinksInPath().path
+        let rootPath = realPath(of: root)
+        let realPath = realPath(of: url)
         guard realPath == rootPath || realPath.hasPrefix(rootPath + "/") else {
             throw Failure.escapesVault(raw)
         }
         return url
+    }
+
+    /// The path with every symlink resolved, whether or not the file
+    /// exists yet. Foundation resolves only what is on disk, and folds
+    /// `/private/tmp` to `/tmp` only then, so a file about to be created
+    /// under such a vault came back under `/private` while its root did
+    /// not, and the vault refused its own new file. The deepest ancestor
+    /// that exists is resolved and the rest put back on it.
+    static func realPath(of url: URL) -> String {
+        var existing = url.standardizedFileURL
+        var rest: [String] = []
+        while !FileManager.default.fileExists(atPath: existing.path), existing.pathComponents.count > 1 {
+            rest.insert(existing.lastPathComponent, at: 0)
+            existing = existing.deletingLastPathComponent()
+        }
+        var resolved = existing.resolvingSymlinksInPath()
+        for part in rest { resolved.appendPathComponent(part) }
+        return resolved.path
     }
 
     static func parent(of relative: String) -> String {

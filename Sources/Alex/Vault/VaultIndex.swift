@@ -26,15 +26,11 @@ struct VaultIndex {
         for entry in entries where entry.kind == .markdown {
             index.notesByStem[Self.stem(of: entry.path)] = entry.path
         }
-        // Each directory's own canvas is hidden from listings; the index
-        // wants it most of all.
+        // Home is hidden from listings; the index wants it most of all.
         var canvasPaths = entries.filter { $0.kind == .canvas }.map(\.path)
-        let directories = [""] + tree.flatMap(\.flattened).filter(\.isDirectory).map(\.path)
-        for dir in directories {
-            let own = VaultPath.join(dir, VaultListing.ownCanvasName(of: dir, root: root))
-            if FileManager.default.fileExists(atPath: root.appendingPathComponent(own).path) {
-                canvasPaths.append(own)
-            }
+        let home = VaultListing.homeCanvas(root: root)
+        if FileManager.default.fileExists(atPath: root.appendingPathComponent(home).path) {
+            canvasPaths.append(home)
         }
         for path in canvasPaths {
             let url = root.appendingPathComponent(path)

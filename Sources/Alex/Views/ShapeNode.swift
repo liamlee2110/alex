@@ -1,0 +1,264 @@
+import SwiftUI
+
+/// A shape on the desk (PLAN.md, revision 15): a `text` node with
+/// `x-shape`, drawn as its outline in the node's colour, filled with that
+/// colour's stock when asked, its text centred inside. A line runs between
+/// its two points with an arrowhead at either end when asked. Double-click
+/// it, or press ↩ with it selected, and it takes text in place, the way a
+/// sticky does; Esc or ⌘↩ puts the pen down (revision 50). An empty
+/// outline is pressed on its stroke alone (revision 53).
+struct ShapeNodeView: View {
+    let node: CanvasNode
+    let selected: Bool
+    var editing = false
+    /// `Camera.detail`, for the picture a text box's words are drawn into.
+    var zoom: CGFloat = 1
+    var onChange: (String) -> Void = { _ in }
+    /// The format bar's size menu (revision 33) and its faces (revision 36).
+    var onTextSize: (TextSize) -> Void = { _ in }
+    var onFamily: (FontFamily) -> Void = { _ in }
+    /// Esc or ⌘↩ in its editor (revision 50).
+    var onDone: () -> Void = {}
+    /// Its editor opened, and closed with these words: one writing, one
+    /// undo step (revision 52).
+    var onBegin: () -> Void = {}
+    var onEnd: (String) -> Void = { _ in }
+
+    @State private var text = ""
+    @State private var saveTask: Task<Void, Never>?
+
+    private var kind: ShapeKind { node.shape ?? .rectangle }
+    /// The words' size: the node's own, or the body's (revision 33).
+    private var size: CGFloat { CGFloat(node.fontSize ?? Typography.bodySize) }
+    /// No colour is ink; a colour is Heptabase's label colour, the one a
+    /// section's border wears.
+    private var stroke: Color { node.color == nil ? Ink.primary : Hepta.label(node.color) }
+    private var fill: Color { node.filled ? Hepta.fill(node.color) : .clear }
+    private var style: StrokeStyle {
+        StrokeStyle(lineWidth: Stroke.shape, lineCap: .round, lineJoin: .round,
+                    dash: node.dashed ? Stroke.dash : [])
+    }
+
+    var body: some View {
+        ZStack {
+            GeometryReader { geo in
+                let box = CGRect(origin: .zero, size: geo.size)
+                if kind == .line {
+                    let ends = Self.endpoints(node, in: geo.size)
+                    Self.segment(ends.from, ends.to).stroke(stroke, style: style)
+                    if node.lineToEnd == "arrow" {
+                        Self.arrowhead(at: ends.to, from: ends.from).fill(stroke)
+                    }
+                    if node.lineFromEnd == "arrow" {
+                        Self.arrowhead(at: ends.from, from: ends.to).fill(stroke)
+                    }
+                } else if kind != .text {
+                    let path = Self.outline(kind, in: box.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2))
+                    path.fill(fill)
+                    path.stroke(stroke, style: style)
+                }
+            }
+            textBody
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(HitArea(kind: kind, points: node.linePoints, whole: takesInside,
+                              reach: Handle.strokeHit / max(zoom, 0.01)))
+    }
+
+    /// Where a press takes the shape (revision 53), Excalidraw's rule: a
+    /// text box, a filled shape, one with words, one selected or one being
+    /// written in is pressed anywhere in its box; an empty outline and a
+    /// line only near their stroke, so a box drawn round cards leaves the
+    /// cards and the desk inside it pressable.
+    private var takesInside: Bool {
+        if selected || editing || kind == .text { return true }
+        guard kind != .line else { return false }
+        return node.filled || !(node.text ?? "").isEmpty
+    }
+
+    /// The box, or the outline stroked `reach` wide: as the shape is drawn,
+    /// so an ellipse is hit on its curve and a line along itself.
+    struct HitArea: Shape {
+        let kind: ShapeKind
+        let points: [CGPoint]
+        let whole: Bool
+        let reach: CGFloat
+
+        func path(in rect: CGRect) -> Path {
+            if whole { return Path(rect) }
+            let outline: Path
+            if kind == .line, points.count == 2 {
+                outline = ShapeNodeView.segment(CGPoint(x: points[0].x * rect.width, y: points[0].y * rect.height),
+                                                CGPoint(x: points[1].x * rect.width, y: points[1].y * rect.height))
+            } else {
+                outline = ShapeNodeView.outline(kind, in: rect.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2))
+            }
+            return outline.strokedPath(StrokeStyle(lineWidth: reach * 2, lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    /// A text box's words start at its top-left, as typed; a shape's sit
+    /// in its middle.
+    private var isText: Bool { kind == .text }
+    /// The node's alignment (revision 47): left for a text box, centred
+    /// for a shape, unless it says otherwise.
+    private var alignment: TextAlignment { node.textAlign.text }
+    /// Where the block of words sits: across by the alignment, down at the
+    /// top of a text box and the middle of a shape.
+    private var placement: Alignment {
+        Alignment(horizontal: node.textAlign.horizontal, vertical: isText ? .top : .center)
+    }
+    private var inset: CGFloat { isText ? Space.xs : Space.m }
+
+    @ViewBuilder
+    private var textBody: some View {
+        if editing, isText {
+            // A text box is written in the note editor, format bar and
+            // all (revision 29); a shape's centred words stay plain.
+            MarkdownEditor(text: $text, scrollable: true,
+                           baseSize: size, headingSizes: Typography.deskHeadings(size),
+                           takesFocus: true, ink: node.color == nil ? nil : NSColor(stroke),
+                           textSize: TextSize(points: node.fontSize), onTextSize: onTextSize,
+                           family: node.fontFamily, onFamily: onFamily,
+                           alignment: node.textAlign.ns, onDone: onDone)
+                .padding(inset)
+                .onAppear {
+                    text = node.text ?? ""
+                    onBegin()
+                }
+                .onChange(of: text) { _, new in save(new) }
+                .onDisappear {
+                    saveTask?.cancel()
+                    onEnd(text)
+                }
+        } else if editing {
+            // As tall as its lines and padded as the words are drawn
+            // below, so they sit where they are drawn, mid-shape, as
+            // Excalidraw's do.
+            ShapeTextEditor(text: $text, font: DeskFace.font(node.fontFamily, size: size),
+                            color: NSColor(ink), alignment: node.textAlign.ns, onDone: onDone)
+                .padding(.horizontal, Space.xs)
+                .padding(.vertical, 2)
+                .padding(inset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: placement)
+                .onAppear {
+                    text = node.text ?? ""
+                    onBegin()
+                }
+                .onChange(of: text) { _, new in save(new) }
+                .onDisappear {
+                    saveTask?.cancel()
+                    onEnd(text)
+                }
+        } else if isText, let held = node.text, !held.isEmpty {
+            NoteRaster(markdown: held, imageBase: nil, imageStem: "", detail: zoom,
+                       base: size, tint: node.color, family: node.fontFamily,
+                       alignment: node.textAlign.ns)
+                .padding(inset)
+        } else if let held = node.text, !held.isEmpty {
+            Text(held)
+                .font(Typography.desk(size, node.fontFamily))
+                .foregroundStyle(ink)
+                .multilineTextAlignment(alignment)
+                .padding(.horizontal, isText ? 0 : Space.xs)
+                .padding(.vertical, isText ? 0 : 2)
+                // On a line the words sit on a scrap of paper over it.
+                .background(RoundedRectangle(cornerRadius: Radius.mark)
+                    .fill(kind == .line ? Ink.card : .clear))
+                .padding(inset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: placement)
+        } else if isText {
+            // An empty text box has nothing else to be seen by.
+            Text("Text")
+                .font(Typography.desk(size, node.fontFamily))
+                .foregroundStyle(Ink.faint)
+                .padding(inset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: placement)
+        }
+    }
+
+    /// Written a moment after typing stops, and when editing ends.
+    private func save(_ new: String) {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            onChange(new)
+        }
+    }
+
+    /// A text box's words wear its colour the way a shape's outline does.
+    private var ink: Color { isText ? stroke : Ink.primary }
+
+    // MARK: - Geometry
+
+    static func outline(_ kind: ShapeKind, in rect: CGRect) -> Path {
+        switch kind {
+        case .rectangle:
+            return Path(roundedRect: rect, cornerRadius: Radius.card)
+        case .ellipse:
+            return Path(ellipseIn: rect)
+        case .diamond:
+            var path = Path()
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.closeSubpath()
+            return path
+        case .line, .text:
+            return Path()
+        }
+    }
+
+    static func endpoints(_ node: CanvasNode, in size: CGSize) -> (from: CGPoint, to: CGPoint) {
+        let p = node.linePoints
+        return (CGPoint(x: p[0].x * size.width, y: p[0].y * size.height),
+                CGPoint(x: p[1].x * size.width, y: p[1].y * size.height))
+    }
+
+    static func segment(_ a: CGPoint, _ b: CGPoint) -> Path {
+        var path = Path()
+        path.move(to: a)
+        path.addLine(to: b)
+        return path
+    }
+
+    /// The edge layer's arrowhead, as a path: a filled triangle whose tip
+    /// is at `tip`, pointing away from `tail`.
+    static func arrowhead(at tip: CGPoint, from tail: CGPoint) -> Path {
+        let size = Stroke.arrowhead
+        let dx = tip.x - tail.x, dy = tip.y - tail.y
+        let len = max(hypot(dx, dy), 0.001)
+        let ux = dx / len, uy = dy / len
+        let base = CGPoint(x: tip.x - ux * size, y: tip.y - uy * size)
+        var path = Path()
+        path.move(to: tip)
+        path.addLine(to: CGPoint(x: base.x - uy * size * 0.5, y: base.y + ux * size * 0.5))
+        path.addLine(to: CGPoint(x: base.x + uy * size * 0.5, y: base.y - ux * size * 0.5))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A shape's name and glyph, for Find on canvas and anything else that
+/// lists it.
+enum ShapeLabel {
+    /// What a shape is called: a line with an arrowhead at either end is
+    /// an arrow.
+    static func name(of node: CanvasNode) -> String {
+        if node.shape == .line {
+            return node.lineToEnd == "arrow" || node.lineFromEnd == "arrow" ? "Arrow" : "Line"
+        }
+        return node.shape.map(\.rawValue.capitalized) ?? "Shape"
+    }
+
+    /// The palette's glyph for it.
+    static func symbol(of node: CanvasNode) -> Glyph {
+        if node.shape == .line, node.lineToEnd == "arrow" || node.lineFromEnd == "arrow" {
+            return DrawTool.arrow.symbol
+        }
+        if node.shape == .text { return .type }
+        return node.shape.flatMap { DrawTool(rawValue: $0.rawValue) }?.symbol ?? DrawTool.rectangle.symbol
+    }
+}

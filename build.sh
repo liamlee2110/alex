@@ -24,6 +24,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create "$ARM_BIN/Alex" "$X86_BIN/Alex" -output "$APP/Contents/MacOS/Alex"
 lipo -info "$APP/Contents/MacOS/Alex"
 [ -f AppIcon.icns ] && cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The starter vault "New workspace…" copies (revision 31), dot files and
+# all: SwiftPM's resources would drop .mcp.json and .gitignore.
+cp -R vault-template "$APP/Contents/Resources/vault-template"
 find "$ARM_BIN" -maxdepth 1 -type d -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
 
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -42,6 +45,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>$BUNDLE_ID.canvas-clip</string>
+      <key>UTTypeDescription</key><string>Alex canvas clip</string>
+      <key>UTTypeConformsTo</key><array><string>public.json</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

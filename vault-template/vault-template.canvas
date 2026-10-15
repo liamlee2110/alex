@@ -1,0 +1,52 @@
+{
+  "edges" : [],
+  "nodes" : [
+    {
+      "color" : "5",
+      "height" : 284,
+      "id" : "17f6fb85d4d96e92",
+      "label" : "notes",
+      "type" : "group",
+      "width" : 380,
+      "x" : 80,
+      "x-folder" : "notes",
+      "y" : 364
+    },
+    {
+      "file" : "canvas.config.json",
+      "height" : 200,
+      "id" : "f0578f11d1fdc182",
+      "type" : "file",
+      "width" : 320,
+      "x" : 80,
+      "y" : 80
+    },
+    {
+      "file" : "CLAUDE.md",
+      "height" : 200,
+      "id" : "762bafa802bbe36e",
+      "type" : "file",
+      "width" : 320,
+      "x" : 440,
+      "y" : 80
+    },
+    {
+      "file" : "README.md",
+      "height" : 200,
+      "id" : "f6777e00f1f56bbe",
+      "type" : "file",
+      "width" : 320,
+      "x" : 800,
+      "y" : 80
+    },
+    {
+      "file" : "notes\/welcome.md",
+      "height" : 200,
+      "id" : "01bc07892a6febb9",
+      "type" : "file",
+      "width" : 320,
+      "x" : 110,
+      "y" : 418
+    }
+  ]
+}

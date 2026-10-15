@@ -1,30 +1,92 @@
 import SwiftUI
 import AppKit
 
-/// The right-hand side: Heptabase's stack of panels. Pinned panels sit to
-/// the left; the live panel on the right follows the selection, or shows
-/// the Journal. Each panel has the `>>` and `+` row and a bordered title.
+/// The detail sheet (revision 21): Heptabase's stack of panels, floating
+/// over the desk's right as Figma's panels float when its UI is folded.
+/// The live panel, following the selection, is the sheet itself: inset
+/// from the window's edges at the panel radius, sliding in from the right.
+/// A pinned panel is a sub-sheet drawn out of the sheet's leading edge —
+/// a step shorter at each end, tucked under it, sliding out from behind
+/// it — so what you kept reads as held beside what you are reading. With
+/// nothing live beside the pins, the last pin is the sheet.
 struct InspectorView: View {
     @ObservedObject var store: CanvasStore
 
+    /// The narrowest a column reads at.
+    static let columnMin: CGFloat = 320
+
+    /// The narrowest the stack can be: a column's minimum per column and
+    /// the tuck of each sub-sheet. The shell gives the stack at least this
+    /// and lets the desk yield, so a pinned page is never cut.
+    static func minimumWidth(for store: CanvasStore) -> CGFloat {
+        let columns = store.pinnedPanels.count + (showsLive(store) ? 1 : 0)
+        return CGFloat(columns) * columnMin
+    }
+
+    private enum Sheet: Hashable {
+        case pin(CanvasStore.PanelTarget)
+        case live
+    }
+
+    private var sheets: [Sheet] {
+        store.pinnedPanels.map(Sheet.pin) + (showsLive ? [.live] : [])
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(store.pinnedPanels, id: \.self) { target in
-                PanelColumn(store: store, target: target)
-                    .frame(minWidth: 320, maxWidth: .infinity)
-                Divider()
+        let sheets = sheets
+        HStack(spacing: -Shell.subsheetTuck) {
+            ForEach(Array(sheets.enumerated()), id: \.element) { i, sheet in
+                let main = i == sheets.count - 1
+                column(sheet)
+                    // The tucked strip is under the sheet; the page keeps
+                    // clear of it.
+                    .padding(.trailing, main ? 0 : Shell.subsheetTuck)
+                    .frame(minWidth: Self.columnMin + (main ? 0 : Shell.subsheetTuck), maxWidth: .infinity,
+                           maxHeight: .infinity)
+                    .floatingCard()
+                    .padding(.vertical, main ? 0 : Shell.subsheetInset)
+                    .zIndex(Double(i))
+                    .transition(main ? .move(edge: .trailing)
+                                     : .offset(x: Self.columnMin).combined(with: .opacity))
             }
-            PanelColumn(store: store, target: nil)
-                .frame(minWidth: 320, maxWidth: .infinity)
         }
-        .background(Ink.card)
+        .animation(Motion.move, value: sheets)
+    }
+
+    @ViewBuilder private func column(_ sheet: Sheet) -> some View {
+        let main = sheet == sheets.last
+        switch sheet {
+        case .pin(let target): PanelColumn(store: store, target: target, main: main)
+        case .live: PanelColumn(store: store, target: nil, main: main)
+        }
+    }
+
+    /// The live column stands when it has something to show, or when the
+    /// stack has nothing else; beside a pin with nothing selected it steps
+    /// out rather than hold a third of the window for a sentence.
+    private var showsLive: Bool { Self.showsLive(store) }
+
+    private static func showsLive(_ store: CanvasStore) -> Bool {
+        store.pinnedPanels.isEmpty || store.livePanelHasContent
     }
 }
 
 /// One panel: pinned to a target, or live (nil) and following the selection.
+/// Its head is the dashboards' column head (revision 18): what the panel
+/// holds named at the left — a file by its glyph and name with the folder
+/// it sits in, a link by its site's mark and title, a sticky, a
+/// shape, a section — and the panel's own verbs as plain glyphs at the
+/// right: Finder, keep this one and start another, and a pin's close.
+/// The sheet hides from the glyph at its head's far end (revision 21). No borders:
+/// the head is a row of the page, not a box on it.
 struct PanelColumn: View {
     @ObservedObject var store: CanvasStore
     let target: CanvasStore.PanelTarget?
+    /// The sheet itself rather than a sub-sheet: it carries the glyph that
+    /// hides the whole stack.
+    var main = false
+    @ObservedObject private var previews = LinkPreviews.shared
+    @EnvironmentObject private var vault: Vault
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,31 +96,103 @@ struct PanelColumn: View {
     }
 
     private var header: some View {
-        HStack(spacing: Space.s) {
-            if let target {
-                PanelButton(symbol: "chevron.right.2", help: "Close this panel") { store.unpin(target) }
-            } else {
-                PanelButton(symbol: "chevron.right.2", help: "Hide the panel") { store.inspectorVisible = false }
-                PanelButton(symbol: "plus", help: "Keep this panel open and start another") { store.pinLivePanel() }
+        HStack(spacing: Space.xs) {
+            head
+            Spacer(minLength: Space.s)
+            // A file with no card on the open canvas: the one thing the
+            // panel asks is to place it (revision 19).
+            if target == nil, !store.showFind, store.looseFile != nil {
+                Button("Place on canvas") { store.placeLooseFile() }
+                    .buttonStyle(.solid)
+                    .fixedSize()
             }
-            Spacer()
             if let path = currentPath, let url = store.vault.url(for: path) {
-                PanelButton(symbol: "arrow.up.forward.square", help: "Reveal in Finder", round: true) {
+                IconButton(symbol: .squareArrowOutUpRight, label: "Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
             }
+            if target == nil, store.showFind {
+                IconButton(symbol: .x, label: "Close find", shortcut: "esc") { store.closeFind() }
+            }
+            if let target {
+                IconButton(symbol: .x, label: "Close this panel") { store.unpin(target) }
+            } else if currentPath != nil {
+                IconButton(symbol: .plus, label: "Keep this panel open and start another") { store.pinLivePanel() }
+            }
+            // The sheet hides from its own head (revision 21): the one
+            // collapse glyph for it, the way the sidebar's is in its own.
+            if main {
+                IconButton(symbol: .panelRight, label: "Hide the sheet",
+                           hint: "Hide the sheet (⌥⌘I)") { store.inspectorVisible = false }
+            }
         }
-        .padding(.horizontal, Space.l)
-        .padding(.top, Space.l)
-        .padding(.bottom, Space.s)
+        .padding(.leading, Shell.panelInset)
+        .padding(.trailing, Space.m)
+        .frame(height: Shell.panelHead)
+        .windowDragArea()
+    }
+
+    /// What the panel holds, named.
+    @ViewBuilder private var head: some View {
+        switch target {
+        case .file(let path):
+            fileHead(path)
+        case nil:
+            if store.showFind {
+                PanelHead(symbol: .search, text: "Find on canvas", detail: store.title)
+            } else if let path = store.looseFile {
+                fileHead(path)
+            } else if let node = store.panelNode {
+                nodeHead(node)
+            } else {
+                PanelHead(symbol: .layoutDashboard, text: store.title)
+            }
+        }
+    }
+
+    /// A file by what it is called on its card and in Recents — a note's
+    /// heading — with its path after it where the heading is not the
+    /// name, else the folder it sits in (revision 19): the tree speaks in
+    /// file names, everything else in titles.
+    private func fileHead(_ path: String) -> some View {
+        let name = VaultPath.name(of: path)
+        let kind: VaultEntry.Kind = vault.isDirectory(path)
+            ? .directory : .forExtension((name as NSString).pathExtension)
+        let parent = VaultPath.parent(of: path)
+        let title = kind == .directory ? name : store.displayTitle(for: path)
+        let detail = title != name ? path : parent.isEmpty ? nil : parent
+        return PanelHead(symbol: kind.symbol, text: title, detail: detail)
+    }
+
+    @ViewBuilder private func nodeHead(_ node: CanvasNode) -> some View {
+        switch node.kind {
+        case .file:
+            if let path = node.file { fileHead(path) }
+        case .text:
+            // Written on the desk, and never here but for its name.
+            let live = store.document.node(node.id) ?? node
+            PanelHead(symbol: ShapeLabel.symbol(of: live), text: ShapeLabel.name(of: live))
+        case .link:
+            let address = node.url ?? ""
+            let meta = previews.meta(for: address)
+            let kind = LinkKind.classify(address)
+            let host = LinkKind.webURL(address)?.host
+            PanelHead(icon: previews.icon(for: address), symbol: kind.symbol,
+                      text: meta?.title ?? meta?.author ?? host ?? address,
+                      detail: meta?.provider ?? kind.providerName ?? host)
+        case .group:
+            PanelHead(symbol: .squareDashed, text: node.label?.isEmpty == false ? node.label! : "Section")
+        case .other:
+            PanelHead(symbol: .fileQuestion, text: "A \(node.kind.typeName) node")
+        }
     }
 
     private var currentPath: String? {
         switch target {
         case .file(let path): return path
-        case .journal: return store.journalPath
         case nil:
-            if store.showJournal { return store.journalPath }
+            if store.showFind { return nil }
+            if let path = store.looseFile { return path }
             if let node = store.selectedNode, node.kind == .file { return node.file }
             return nil
         }
@@ -70,12 +204,13 @@ struct PanelColumn: View {
         case .file(let path):
             FileInspector(path: path, store: store)
                 .id(path)
-        case .journal:
-            JournalView(store: store)
         case nil:
-            if store.showJournal {
-                JournalView(store: store)
-            } else if let node = store.selectedNode {
+            if store.showFind {
+                FindPanel(store: store)
+            } else if let path = store.looseFile {
+                FileInspector(path: path, store: store)
+                    .id(path)
+            } else if let node = store.panelNode {
                 NodeInspector(node: node, store: store)
                     .id(node.id)
             } else {
@@ -85,43 +220,64 @@ struct PanelColumn: View {
     }
 }
 
+/// The panel head's name: a glyph — a file's kind, a link's site — the
+/// name in the identifying weight, and a supporting fact after it in
+/// the supporting ink: the folder a file sits in, a link's provider.
+struct PanelHead: View {
+    var icon: NSImage? = nil
+    let symbol: Glyph
+    let text: String
+    var detail: String? = nil
+
+    var body: some View {
+        HStack(spacing: Space.s) {
+            if let icon {
+                LinkMark(icon: icon, symbol: symbol)
+            } else {
+                GlyphImage(symbol)
+                    .foregroundStyle(Ink.muted)
+                    .frame(width: 16)
+            }
+            Text(text)
+                .font(Typography.control)
+                .foregroundStyle(Ink.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            // The file's path is short and says which file; a long
+            // heading gives way to it (revision 19).
+            if let detail {
+                Text(detail)
+                    .font(Typography.meta)
+                    .foregroundStyle(Ink.muted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// More than one card selected, or a moment between selections while a
+/// pin keeps the stack open: the canvas's counts and what to do next.
+/// The head names the canvas.
 struct EmptyInspector: View {
     @ObservedObject var store: CanvasStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            Text(store.title)
-                .font(Typography.title)
+        VStack(alignment: .leading, spacing: Space.s) {
             Text("\(store.document.nodes.count) on the canvas · \(store.unplaced.count) not placed")
-                .font(Typography.meta)
+                .font(Typography.body)
                 .foregroundStyle(Ink.muted)
-            if !store.unplaced.isEmpty {
-                Text("Not placed yet")
-                    .font(Typography.label)
-                    .foregroundStyle(Ink.faint)
-                    .padding(.top, Space.s)
-                Text("Drag one onto the desk, or place it beside the selection.")
-                    .font(Typography.meta)
-                    .foregroundStyle(Ink.faint)
-                ForEach(store.unplaced) { entry in
-                    HStack {
-                        Label(entry.name, systemImage: entry.kind.symbol)
-                            .font(Typography.body)
-                            .lineLimit(1)
-                        Spacer()
-                        Button("Place") { store.place(entry.path) }
-                            .font(Typography.control)
-                    }
-                    .contentShape(Rectangle())
-                    .draggable(store.vault.url(for: entry.path) ?? URL(fileURLWithPath: "/"))
-                }
-            }
             Spacer()
-            Text("Select a card to read it here.")
-                .font(Typography.meta)
-                .foregroundStyle(Ink.faint)
+            Text(store.selection.count > 1
+                 ? "\(store.selection.count) selected. Pick one to read it here."
+                 : "Select a card to read it here.")
+                .font(Typography.body)
+                .foregroundStyle(Ink.muted)
         }
-        .padding(Space.l)
+        .padding(.horizontal, Shell.panelInset)
+        .padding(.vertical, Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -137,16 +293,19 @@ struct NodeInspector: View {
                 FileInspector(path: path, store: store)
             }
         case .text:
-            TextNodeInspector(node: node, store: store)
+            // Written on the desk: a sticky, a text box, a shape.
+            EmptyView()
         case .link:
             LinkInspector(node: node)
         case .group:
             GroupInspector(node: node, store: store)
         case .other:
-            Text("A \(node.kind.typeName) node from another app.")
+            Text("A \(node.kind.typeName) node from another app. Kept as is.")
                 .font(Typography.body)
                 .foregroundStyle(Ink.muted)
-                .padding(Space.l)
+                .padding(.horizontal, Shell.panelInset)
+                .padding(.vertical, Space.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -154,8 +313,6 @@ struct NodeInspector: View {
 struct FileInspector: View {
     let path: String
     @ObservedObject var store: CanvasStore
-    /// Inside the Journal the day heading stands in for the title row.
-    var embedded = false
     @EnvironmentObject private var vault: Vault
 
     @State private var text = ""
@@ -164,6 +321,8 @@ struct FileInspector: View {
     @State private var dirty = false
     @State private var changedOnDisk = false
     @State private var saveTask: Task<Void, Never>?
+    /// The frontmatter as text, unfolded under its row.
+    @State private var showProperties = false
 
     private var name: String { VaultPath.name(of: path) }
     private var stem: String { (name as NSString).deletingPathExtension }
@@ -175,9 +334,20 @@ struct FileInspector: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !embedded { titleRow }
             if changedOnDisk { banner }
             content
+        }
+        // The head names the file (`PanelColumn`); what is left to say
+        // here is that a write is on its way, whispered at the foot.
+        .overlay(alignment: .bottomTrailing) {
+            if dirty {
+                Text("Saving")
+                    .font(Typography.micro)
+                    .foregroundStyle(Ink.faint)
+                    .padding(.trailing, Shell.panelInset)
+                    .padding(.bottom, Space.s)
+                    .allowsHitTesting(false)
+            }
         }
         .onAppear(perform: load)
         .onChange(of: vault.generation) { _, _ in checkDisk() }
@@ -185,38 +355,10 @@ struct FileInspector: View {
         .onDisappear(perform: flush)
     }
 
-    private var titleRow: some View {
-        HStack(spacing: Space.s) {
-            Image(systemName: kind.symbol)
-                .foregroundStyle(Ink.muted)
-            Text(name)
-                .font(Typography.body)
-                .foregroundStyle(Ink.primary)
-                .lineLimit(1)
-            Spacer()
-            if dirty {
-                Text("Saving")
-                    .font(Typography.micro)
-                    .foregroundStyle(Ink.faint)
-            }
-            Text(VaultPath.parent(of: path))
-                .font(Typography.meta)
-                .foregroundStyle(Ink.faint)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .padding(.horizontal, Space.m)
-        .frame(height: 36)
-        .background(RoundedRectangle(cornerRadius: Radius.well).fill(Ink.card))
-        .overlay(RoundedRectangle(cornerRadius: Radius.well).strokeBorder(Ink.hairline, lineWidth: 1))
-        .padding(.horizontal, Space.l)
-        .padding(.bottom, Space.m)
-    }
-
     private var banner: some View {
         HStack(spacing: Space.s) {
             Text("Changed on disk while you were editing.")
-                .font(Typography.meta)
+                .font(Typography.body)
                 .foregroundStyle(Ink.primary)
             Spacer()
             Button("Reload") {
@@ -225,13 +367,15 @@ struct FileInspector: View {
                 dirty = false
                 changedOnDisk = false
             }
+            .buttonStyle(.outline)
             Button("Keep mine") {
                 changedOnDisk = false
                 write()
             }
+            .buttonStyle(.outline)
         }
-        .font(Typography.control)
-        .padding(Space.m)
+        .padding(.horizontal, Shell.panelInset)
+        .padding(.vertical, Space.s)
         .background(Accent.wash)
     }
 
@@ -240,35 +384,29 @@ struct FileInspector: View {
         switch kind {
         case .markdown:
             let editorAndInfo = VStack(alignment: .leading, spacing: 0) {
+                // The frontmatter is one folded row that opens as text
+                // under it (revision 34); the editor gets the body alone,
+                // and both write the one file.
+                let split = Frontmatter.split(text)
                 let fm = Frontmatter.parse(text)
-                if !fm.isEmpty {
-                    FlowLayout(spacing: 6) {
-                        ForEach(fm.order, id: \.self) { key in
-                            if let value = fm[key], !value.isEmpty {
-                                HStack(spacing: 4) {
-                                    Text(key).foregroundStyle(Ink.faint)
-                                    Text(value.display).foregroundStyle(Ink.muted)
-                                }
-                                .font(Typography.micro)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(Ink.well))
-                            }
-                        }
+                if split.hasBlock {
+                    propertiesRow(fm)
+                    if showProperties {
+                        PlainTextEditor(text: yamlBinding)
+                            .frame(height: propertiesHeight(split.yaml))
+                            .background(RoundedRectangle(cornerRadius: Radius.well).fill(Ink.well))
+                            .padding(.horizontal, Shell.panelInset)
+                            .padding(.top, Space.s)
                     }
-                    .padding(.horizontal, Space.l)
-                    .padding(.top, Space.m)
                 }
-                MarkdownEditor(text: $text, imageBase: url?.deletingLastPathComponent(), imageStem: stem,
+                MarkdownEditor(text: bodyBinding, imageBase: url?.deletingLastPathComponent(), imageStem: stem,
                                onOpenLink: { name in store.openNote(named: name, from: path) })
-                    .padding(Space.l)
+                    .padding(.horizontal, Shell.panelInset)
+                    .padding(.top, Space.m)
+                    .padding(.bottom, Space.l)
                 InfoBlock(path: path, text: text, store: store)
             }
-            if embedded {
-                editorAndInfo
-            } else {
-                ScrollView { editorAndInfo }
-            }
+            ScrollView { editorAndInfo }
         case .code, .text, .canvas:
             PlainTextEditor(text: $text, editable: editable)
         case .image:
@@ -278,7 +416,9 @@ struct FileInspector: View {
                         .resizable()
                         .scaledToFit()
                         .frame(maxWidth: .infinity)
-                        .padding(Space.l)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.well))
+                        .padding(.horizontal, Shell.panelInset)
+                        .padding(.vertical, Space.m)
                 }
             } else {
                 cannotShow
@@ -294,13 +434,54 @@ struct FileInspector: View {
         }
     }
 
+    /// The frontmatter folded to one quiet row, "Properties" and how many
+    /// keys it holds (revision 34): the heading and the card already say
+    /// what matters, so the keys wait until asked for and unfold as text.
+    private func propertiesRow(_ fm: Frontmatter) -> some View {
+        HStack(spacing: Space.s) {
+            HStack(spacing: Space.xs) {
+                Text("Properties").foregroundStyle(Ink.muted)
+                Text("\(fm.order.count)").foregroundStyle(Ink.muted)
+            }
+            .font(Typography.meta)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(Motion.move) { showProperties.toggle() } }
+            Spacer(minLength: 0)
+            IconButton(symbol: showProperties ? .chevronUp : .chevronDown,
+                       label: showProperties ? "Fold the properties" : "Unfold the properties",
+                       size: .small) {
+                withAnimation(Motion.move) { showProperties.toggle() }
+            }
+        }
+        .padding(.horizontal, Shell.panelInset)
+        .padding(.top, Space.xs)
+    }
+
+    private func propertiesHeight(_ yaml: String) -> CGFloat {
+        let rows = max(yaml.split(separator: "\n", omittingEmptySubsequences: false).count, 1)
+        return CGFloat(rows) * Typography.lineHeight(ofSize: 12, monospaced: true) + 2 * Space.m
+    }
+
+    /// The body alone, put back under the block untouched.
+    private var bodyBinding: Binding<String> {
+        Binding(get: { Frontmatter.split(text).body },
+                set: { text = Frontmatter.split(text).replacingBody(with: $0) })
+    }
+
+    /// The block alone, put back over the body untouched.
+    private var yamlBinding: Binding<String> {
+        Binding(get: { Frontmatter.split(text).yaml },
+                set: { text = Frontmatter.split(text).replacingYAML(with: $0) })
+    }
+
     private var cannotShow: some View {
-        VStack(spacing: Space.s) {
+        VStack(spacing: Space.m) {
             Text("Alex can't show this file yet.")
                 .font(Typography.body)
                 .foregroundStyle(Ink.muted)
             if let url {
                 Button("Open with the default app") { NSWorkspace.shared.open(url) }
+                    .buttonStyle(.outline)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -331,6 +512,7 @@ struct FileInspector: View {
             try vault.write(text, to: path)
             diskText = text
             dirty = false
+            store.refreshPreview(for: path)
         } catch {
             NSLog("Alex: could not save \(path): \(error)")
         }
@@ -375,16 +557,13 @@ struct InfoBlock: View {
         let tags = Frontmatter.parse(text)["tags"]
         VStack(alignment: .leading, spacing: Space.s) {
             Divider()
-            Label("Info", systemImage: "info.circle")
-                .font(Typography.label)
-                .foregroundStyle(Ink.muted)
-                .padding(.top, Space.s)
-            row("clock", "Created", dates.created.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "—")
-            row("clock.arrow.circlepath", "Updated", dates.modified.map { $0.formatted(.relative(presentation: .named)) } ?? "—")
-            row("textformat", "Count", "\(words) words · \(text.count) characters")
+            sectionHead("Info")
+            row(.clock, "Created", dates.created.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "—")
+            row(.rotateCcwClock, "Updated", dates.modified.map { $0.formatted(.relative(presentation: .named)) } ?? "—")
+            row(.type, "Count", "\(words) words · \(text.count) characters")
             HStack(alignment: .top, spacing: Space.s) {
-                Image(systemName: "rectangle.3.group").frame(width: 16).foregroundStyle(Ink.faint)
-                Text("Canvases (\(canvases.count))").foregroundStyle(Ink.faint).frame(width: 110, alignment: .leading)
+                GlyphImage(.layoutDashboard).frame(width: 16).foregroundStyle(Ink.faint)
+                Text("Canvases (\(canvases.count))").foregroundStyle(Ink.muted).frame(width: 110, alignment: .leading)
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(canvases, id: \.self) { canvas in
                         Button {
@@ -397,20 +576,20 @@ struct InfoBlock: View {
                     }
                 }
             }
-            .font(Typography.meta)
-            row("number", "Tags", tags.map(\.display).flatMap { $0.isEmpty ? nil : $0 } ?? "none")
+            .font(Typography.body)
+            row(.hash, "Tags", tags.map(\.display).flatMap { $0.isEmpty ? nil : $0 } ?? "none")
             if !backlinks.isEmpty {
-                Divider().padding(.top, Space.s)
-                Label("Backlinks (\(backlinks.count))", systemImage: "arrow.turn.up.left")
-                    .font(Typography.label)
-                    .foregroundStyle(Ink.muted)
-                    .padding(.top, Space.s)
+                Divider().padding(.top, Space.m)
+                sectionHead("Backlinks (\(backlinks.count))")
                 ForEach(backlinks, id: \.self) { link in
                     Button {
                         store.reveal(link.source)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Label(VaultIndex.stem(of: link.source), systemImage: "doc.text")
+                            HStack(spacing: Space.xs) {
+                                GlyphImage(.fileText)
+                                Text(VaultIndex.stem(of: link.source))
+                            }
                                 .font(Typography.body)
                                 .foregroundStyle(Ink.primary)
                             Text(link.snippet)
@@ -427,7 +606,7 @@ struct InfoBlock: View {
                 }
             }
         }
-        .padding(.horizontal, Space.l)
+        .padding(.horizontal, Shell.panelInset)
         .padding(.bottom, Space.xl)
     }
 
@@ -436,13 +615,24 @@ struct InfoBlock: View {
         return dir.isEmpty ? vault.name : dir
     }
 
-    private func row(_ symbol: String, _ label: String, _ value: String) -> some View {
+    /// A part's name, the way the dashboards head a section: a step up
+    /// from the body, in the supporting ink, air above it.
+    private func sectionHead(_ title: String) -> some View {
+        Text(title)
+            .font(Typography.section)
+            .foregroundStyle(Ink.muted)
+            .padding(.top, Space.m)
+            .padding(.bottom, Space.xs)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func row(_ symbol: Glyph, _ label: String, _ value: String) -> some View {
         HStack(spacing: Space.s) {
-            Image(systemName: symbol).frame(width: 16).foregroundStyle(Ink.faint)
-            Text(label).foregroundStyle(Ink.faint).frame(width: 110, alignment: .leading)
+            GlyphImage(symbol).frame(width: 16).foregroundStyle(Ink.faint)
+            Text(label).foregroundStyle(Ink.muted).frame(width: 110, alignment: .leading)
             Text(value).foregroundStyle(Ink.primary)
         }
-        .font(Typography.meta)
+        .font(Typography.body)
     }
 }
 
@@ -453,74 +643,128 @@ struct DirectoryInspector: View {
 
     var body: some View {
         let entries = vault.root.flatMap { try? VaultListing.entries(in: path, root: $0) } ?? []
-        VStack(alignment: .leading, spacing: Space.m) {
-            Button {
-                store.openDirectory(path)
-            } label: {
-                Label("Open this folder", systemImage: "arrow.right.circle")
+        let hidden = store.isHome && Folders.isHidden(path, in: Folders.hidden(in: store.document))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // A folder is its section on Home: look at it there, or,
+                // taken off Home, put it back.
+                if hidden {
+                    Button("Put back on Home") { store.place(path) }
+                        .buttonStyle(.solid)
+                        .keyboardShortcut(.defaultAction)
+                        .padding(.bottom, Space.l)
+                } else if Folders.section(for: path, in: store.document) != nil {
+                    Button("Show on Home") { store.openDirectory(path) }
+                        .buttonStyle(.solid)
+                        .keyboardShortcut(.defaultAction)
+                        .padding(.bottom, Space.l)
+                } else if entries.isEmpty {
+                    Text("Nothing in it yet. Its section comes onto Home with its first file.")
+                        .font(Typography.body)
+                        .foregroundStyle(Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, Space.l)
+                }
+                ForEach(entries) { entry in
+                    HStack(spacing: Space.s) {
+                        GlyphImage(entry.kind.symbol, filled: entry.isDirectory)
+                            .foregroundStyle(entry.isDirectory ? Stock.ink(forPath: entry.path) : Ink.faint)
+                            .frame(width: 16)
+                        Text(entry.name)
+                            .font(Typography.body)
+                            .foregroundStyle(Ink.primary)
+                            .lineLimit(1)
+                    }
+                    .frame(height: Shell.row)
+                }
             }
-            .keyboardShortcut(.defaultAction)
-            ForEach(entries) { entry in
-                Label(entry.name, systemImage: entry.kind.symbol)
-                    .font(Typography.body)
-                    .foregroundStyle(Ink.primary)
-                    .lineLimit(1)
-            }
-            Spacer()
-        }
-        .padding(Space.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct TextNodeInspector: View {
-    let node: CanvasNode
-    @ObservedObject var store: CanvasStore
-    @State private var text = ""
-    @State private var saveTask: Task<Void, Never>?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Sticky note")
-                .font(Typography.title)
-                .padding(Space.l)
-            Divider()
-            ScrollView {
-                MarkdownEditor(text: $text, onOpenLink: { name in store.openNote(named: name, from: nil) })
-                    .padding(Space.l)
-            }
-        }
-        .onAppear { text = node.text ?? "" }
-        .onChange(of: text) { _, new in
-            saveTask?.cancel()
-            saveTask = Task {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard !Task.isCancelled, var latest = store.document.node(node.id), latest.text != new else { return }
-                latest.text = new
-                store.update(latest)
-            }
+            .padding(.horizontal, Shell.panelInset)
+            .padding(.vertical, Space.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 
+/// A link in the panel: the provider's embed or the page itself, live,
+/// under the head that names the site, with the address and the way out
+/// to the browser at the foot. A video sits at 16:9 with its title and
+/// blurb under it; a post or a page fills the panel.
 struct LinkInspector: View {
     let node: CanvasNode
+    @ObservedObject private var previews = LinkPreviews.shared
+
+    private var address: String { node.url ?? "" }
+    private var url: URL? { LinkKind.webURL(address) }
+    private var kind: LinkKind { LinkKind.classify(address) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            Text("Link")
-                .font(Typography.title)
-            Text(node.url ?? "")
-                .font(Typography.body)
-                .foregroundStyle(Ink.muted)
-                .textSelection(.enabled)
-            if let url = node.url.flatMap(URL.init(string:)) {
-                Button("Open in the browser") { NSWorkspace.shared.open(url) }
+        let meta = previews.meta(for: address)
+        VStack(spacing: 0) {
+            if let url {
+                if kind.isVideo {
+                    EmbedWebView(url: url, kind: kind)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.well))
+                        .padding(.horizontal, Shell.panelInset)
+                        .padding(.top, Space.xs)
+                    ScrollView { details(meta) }
+                } else {
+                    EmbedWebView(url: url, kind: kind)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                Text("Not a web address.")
+                    .font(Typography.body)
+                    .foregroundStyle(Ink.muted)
+                    .padding(.horizontal, Shell.panelInset)
+                    .padding(.vertical, Space.m)
+                Spacer()
             }
-            Spacer()
+            foot
         }
-        .padding(Space.l)
+    }
+
+    private func details(_ meta: LinkMeta?) -> some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            if let title = meta?.title {
+                Text(title)
+                    .font(Typography.title)
+                    .foregroundStyle(Ink.primary)
+            }
+            if let author = meta?.author {
+                Text(author)
+                    .font(Typography.body)
+                    .foregroundStyle(Ink.muted)
+            }
+            if let text = meta?.description {
+                Text(text)
+                    .font(Typography.body)
+                    .foregroundStyle(Ink.primary)
+            }
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Shell.panelInset)
+        .padding(.vertical, Space.l)
+    }
+
+    private var foot: some View {
+        HStack(spacing: Space.s) {
+            Text(address)
+                .font(Typography.meta)
+                .foregroundStyle(Ink.muted)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Spacer()
+            if let url {
+                Button("Open in the browser") { NSWorkspace.shared.open(url) }
+                    .buttonStyle(.outline)
+            }
+        }
+        .padding(.horizontal, Shell.panelInset)
+        .frame(height: 48)
+        .overlay(alignment: .top) { Rectangle().fill(Ink.hairline).frame(height: 1) }
     }
 }
 
@@ -531,10 +775,9 @@ struct GroupInspector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            Text("Section")
-                .font(Typography.title)
             TextField("Label", text: $label)
                 .textFieldStyle(.roundedBorder)
+                .font(Typography.body)
                 .onSubmit { store.setLabel(node.id, label) }
             HStack(spacing: Space.s) {
                 ForEach([nil, "1", "2", "3", "4", "5", "6"], id: \.self) { color in
@@ -551,42 +794,9 @@ struct GroupInspector: View {
             }
             Spacer()
         }
-        .padding(Space.l)
+        .padding(.horizontal, Shell.panelInset)
+        .padding(.vertical, Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { label = node.label ?? "" }
-    }
-}
-
-/// The panel's small bordered buttons, square or round.
-struct PanelButton: View {
-    let symbol: String
-    let help: String
-    var round = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(Typography.control)
-                .foregroundStyle(Ink.icon)
-                .frame(width: 28, height: 28)
-                .background {
-                    if round {
-                        Circle().fill(Ink.card)
-                    } else {
-                        RoundedRectangle(cornerRadius: Radius.control).fill(Ink.card)
-                    }
-                }
-                .overlay {
-                    if round {
-                        Circle().strokeBorder(Ink.hairline, lineWidth: 1)
-                    } else {
-                        RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Ink.hairline, lineWidth: 1)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
     }
 }

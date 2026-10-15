@@ -19,18 +19,18 @@ struct VaultEntry: Identifiable, Hashable {
             }
         }
 
-        /// SF Symbol name for the sidebar.
-        var symbol: String {
+        /// The icon for the sidebar, the tree and a card.
+        var symbol: Glyph {
             switch self {
-            case .directory: return "folder"
-            case .markdown: return "doc.text"
-            case .canvas: return "rectangle.3.group"
-            case .image: return "photo"
-            case .pdf: return "doc.richtext"
-            case .html: return "globe"
-            case .code: return "chevron.left.forwardslash.chevron.right"
-            case .text: return "doc.plaintext"
-            case .other: return "doc"
+            case .directory: return .folder
+            case .markdown: return .fileText
+            case .canvas: return .layoutDashboard
+            case .image: return .image
+            case .pdf: return .bookOpenText
+            case .html: return .globe
+            case .code: return .codeXml
+            case .text: return .fileType
+            case .other: return .file
             }
         }
 
@@ -60,18 +60,19 @@ enum VaultListing {
         name.hasPrefix(".") || name == "node_modules" || name == "__pycache__"
     }
 
-    /// A directory's own canvas, `<dir>/<dirname>.canvas` (the vault's is
-    /// `<vaultname>.canvas`): the map of the directory, not a thing in it.
-    static func ownCanvasName(of directory: String, root: URL) -> String {
-        (directory.isEmpty ? root.lastPathComponent : VaultPath.name(of: directory)) + ".canvas"
+    /// Home, the vault's own canvas, `<vaultname>.canvas` at the root: the
+    /// map of the vault, not a thing in it. (Before revision 20 every
+    /// directory had one; those left behind are ordinary canvases now.)
+    static func homeCanvas(root: URL) -> String {
+        root.lastPathComponent + ".canvas"
     }
 
     /// One directory level: directories first, then names case-insensitively.
-    /// The directory's own canvas file is left out.
+    /// Home's own canvas file is left out.
     static func entries(in directory: String, root: URL) throws -> [VaultEntry] {
         let url = try VaultPath.resolve(directory, in: root)
         let names = try FileManager.default.contentsOfDirectory(atPath: url.path)
-        let own = ownCanvasName(of: directory, root: root)
+        let own = directory.isEmpty ? homeCanvas(root: root) : nil
         var out: [VaultEntry] = []
         for name in names where !isHidden(name) && name != own {
             var isDirectory: ObjCBool = false

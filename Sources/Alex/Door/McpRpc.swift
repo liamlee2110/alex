@@ -84,10 +84,13 @@ final class McpRpc {
     /// What the connected agent is told at initialize.
     static let instructions = """
         Alex shows the user's vault (a folder of Markdown, images and .canvas \
-        files) as a spatial canvas. Files are the truth and this door is a \
-        convenience: you may also write files directly. Call get_context first \
-        to see which canvas is open and what is selected. Write artifacts into \
-        the vault with write_artifact (it places a card on the file's canvas), \
+        files) as a spatial canvas. Home, the vault's own canvas, shows every \
+        folder as a section holding its files' cards, and a file that appears \
+        joins its folder's section by itself. Files are the truth and this \
+        door is a convenience: you may also write files directly. Call \
+        get_context first to see which canvas is open and what is selected. \
+        Write artifacts into the vault with write_artifact (its card lands in \
+        its folder's section on Home), \
         add notes, links and stickies with add_card, connect cards with \
         connect, then call focus so the user sees what you made. Paths are \
         relative to the vault. Never overwrite without overwrite: true. There \
@@ -124,19 +127,21 @@ final class McpRpc {
         ],
         [
             "name": "read_canvas",
-            "description": "A canvas as JSON Canvas 1.0: nodes and edges. Pass a .canvas path or "
-                + "a directory (its own canvas is used, created if missing). Omit for the open one.",
+            "description": "A canvas as JSON Canvas 1.0: nodes and edges. Pass a .canvas path; a "
+                + "directory means Home, where each folder is a group with its path under x-folder. "
+                + "Omit for the open one.",
             "inputSchema": ["type": "object", "properties": [
-                "path": ["type": "string", "description": "Vault-relative .canvas file or directory."],
+                "path": ["type": "string", "description": "Vault-relative .canvas file, or a directory for Home."],
             ]] as [String: Any],
         ],
         [
             "name": "add_card",
-            "description": "Add a node to a canvas: type text (a sticky note), file (a vault path, "
-                + "rendered as a card or a folder), or link (a URL). Without x and y it is placed "
-                + "beside `near` (a node id), else beside the selection, else below everything.",
+            "description": "Add a node to a canvas: type text (a sticky note), file (a vault file; "
+                + "a folder is already a section on Home), or link (a URL). Without x and y a file "
+                + "on Home goes into its folder's section; anything else is placed beside `near` "
+                + "(a node id), else beside the selection, else below everything.",
             "inputSchema": ["type": "object", "properties": [
-                "canvas": ["type": "string", "description": "Vault-relative .canvas file or directory; omit for the open canvas."],
+                "canvas": ["type": "string", "description": "Vault-relative .canvas file; omit for the open canvas."],
                 "type": ["type": "string", "enum": ["text", "file", "link"]],
                 "text": ["type": "string", "description": "For text: the note, Markdown."],
                 "file": ["type": "string", "description": "For file: a vault-relative path."],
@@ -150,14 +155,14 @@ final class McpRpc {
         [
             "name": "write_artifact",
             "description": "Write a file into the vault (text via `content`, binary via `base64`), "
-                + "creating directories as needed, and place it as a card on its directory's canvas "
-                + "(or on `canvas`). Refuses to overwrite unless overwrite is true. Use this for "
-                + "plots, notes, data and generated HTML.",
+                + "creating directories as needed, and place it as a card in its folder's section "
+                + "on Home (or on `canvas`). Refuses to overwrite unless overwrite is true. Use this "
+                + "for plots, notes, data and generated HTML.",
             "inputSchema": ["type": "object", "properties": [
                 "path": ["type": "string", "description": "Vault-relative path, e.g. artifacts/C3.1/step_response.png"],
                 "content": ["type": "string", "description": "Text content."],
                 "base64": ["type": "string", "description": "Binary content, base64."],
-                "canvas": ["type": "string", "description": "Canvas to place the card on; default is the file's directory."],
+                "canvas": ["type": "string", "description": "Canvas to place the card on; default is Home."],
                 "near": ["type": "string", "description": "A node id to place beside."],
                 "place": ["type": "boolean", "description": "Place a card at all; default true."],
                 "overwrite": ["type": "boolean"],
@@ -215,11 +220,13 @@ final class McpRpc {
         case noNode(String)
         case exists(String)
         case missing(String)
+        case folder(String)
 
         var description: String {
             switch self {
             case .noVault: return "No vault is open in Alex."
             case .badPath(let p): return "Not a canvas or directory in the vault: \(p)"
+            case .folder(let p): return "\(p) is a folder, and a folder is a section on Home already. Place its files instead."
             case .noNode(let id): return "No node \(id) on that canvas."
             case .exists(let p): return "\(p) exists; pass overwrite: true to replace it."
             case .missing(let p): return "Missing: \(p)"
@@ -227,34 +234,42 @@ final class McpRpc {
         }
     }
 
-    /// The canvas a tool means: a `.canvas` path, a directory (its own
-    /// canvas), or nothing (the open one, else the root).
+    var home: String { CanvasStore.homeCanvas(vault: vault) }
+
+    /// The canvas a tool means: a `.canvas` path, a directory (Home, where
+    /// a folder is a section, revision 20), or nothing (the open one, else
+    /// Home).
     func canvasPath(from argument: String?) throws -> String {
         guard vault.root != nil else { throw DoorError.noVault }
         guard let argument, !argument.isEmpty else {
-            return canvas.isOpen ? canvas.canvasPath : CanvasStore.canvasFile(for: "", vault: vault)
+            return canvas.isOpen ? canvas.canvasPath : home
         }
         let path = try VaultPath.normalise(argument)
         if path.hasSuffix(".canvas") { return path }
-        if vault.isDirectory(path) { return CanvasStore.canvasFile(for: path, vault: vault) }
+        if path.isEmpty || vault.isDirectory(path) { return home }
         throw DoorError.badPath(argument)
     }
 
-    /// Load a canvas, creating a directory's own canvas on first touch, the
-    /// way the app does on first visit.
+    /// Load a canvas. Home is made on first touch, the way the app makes
+    /// it on first visit; any other canvas that is not there is empty.
     func loadCanvas(_ path: String) throws -> CanvasDocument {
         if vault.exists(path), let url = vault.url(for: path) {
             return try CanvasDocument.decode(try Data(contentsOf: url))
         }
-        let directory = VaultPath.parent(of: path)
-        guard let root = vault.root,
-              path == CanvasStore.canvasFile(for: directory, vault: vault) else {
-            return CanvasDocument()
-        }
-        let entries = ((try? VaultListing.entries(in: directory, root: root)) ?? [])
-        let doc = CanvasDocument(nodes: Placement.autoLayout(entries))
+        guard path == home else { return CanvasDocument() }
+        var doc = CanvasDocument()
+        Folders.reconcile(&doc, tree: vault.tree, home: home)
         try vault.write(try doc.encode(), to: path)
         return doc
+    }
+
+    /// A file's card on Home, in its folder's section: taken off the
+    /// hidden list if it was on it, and placed the way the app places what
+    /// appears (with whatever else is waiting).
+    private func placeOnHome(_ file: String, in doc: inout CanvasDocument) -> CanvasNode? {
+        Folders.unhide(file, in: &doc)
+        Folders.reconcile(&doc, tree: vault.tree, home: home)
+        return doc.nodes.first { $0.kind == .file && $0.file == file }
     }
 
     func saveCanvas(_ doc: CanvasDocument, to path: String) throws {
@@ -346,13 +361,20 @@ final class McpRpc {
                 guard let file = str(args, "file") else { return .failure("file is required for a file card") }
                 let rel = try VaultPath.normalise(file)
                 guard vault.exists(rel) else { return .failure(DoorError.missing(rel).description) }
-                let size = vault.isDirectory(rel) ? Placement.folderSize : Placement.cardSize
+                guard !vault.isDirectory(rel) else { return .failure(DoorError.folder(rel).description) }
+                if path == home, num(args, "x") == nil || num(args, "y") == nil,
+                   !doc.nodes.contains(where: { $0.file == rel }), var placed = placeOnHome(rel, in: &doc) {
+                    if let color = str(args, "color") { placed.color = color; doc.update(placed) }
+                    try saveCanvas(doc, to: path)
+                    return .success(["canvas": path, "node": nodeSummary(placed)] as [String: Any])
+                }
+                let size = Placement.size(forFile: rel, isDirectory: false)
                 let frame = placement(in: doc, path: path, args: args, size: size)
                 node = CanvasNode(kind: .file, frame: frame, file: rel, color: str(args, "color"))
             case "link":
                 guard let url = str(args, "url") else { return .failure("url is required for a link card") }
                 let frame = placement(in: doc, path: path, args: args,
-                                      size: CGSize(width: 300, height: 120))
+                                      size: LinkKind.classify(url).cardSize)
                 node = CanvasNode(kind: .link, frame: frame, url: url, color: str(args, "color"))
             default:
                 return .failure("type must be text, file or link")
@@ -384,11 +406,16 @@ final class McpRpc {
             try vault.write(data, to: path)
             var result: [String: Any] = ["path": path, "bytes": data.count]
             if flag(args, "place", default: true) {
-                let canvasFile = try canvasPath(from: str(args, "canvas") ?? VaultPath.parent(of: path))
+                let canvasFile = try str(args, "canvas").map { try canvasPath(from: $0) } ?? home
                 var doc = try loadCanvas(canvasFile)
                 if let existing = doc.nodes.first(where: { $0.file == path }) {
                     result["canvas"] = canvasFile
                     result["node"] = nodeSummary(existing)
+                } else if canvasFile == home, num(args, "x") == nil || num(args, "y") == nil,
+                          let node = placeOnHome(path, in: &doc) {
+                    try saveCanvas(doc, to: canvasFile)
+                    result["canvas"] = canvasFile
+                    result["node"] = nodeSummary(node)
                 } else {
                     let frame = placement(in: doc, path: canvasFile, args: args, size: Placement.cardSize)
                     let node = CanvasNode(kind: .file, frame: frame, file: path)
@@ -449,12 +476,7 @@ final class McpRpc {
         do {
             let path = try canvasPath(from: str(args, "canvas"))
             if path != canvas.canvasPath || !canvas.isOpen {
-                let directory = VaultPath.parent(of: path)
-                if path == CanvasStore.canvasFile(for: directory, vault: vault) {
-                    canvas.openDirectory(directory)
-                } else {
-                    canvas.openCanvas(at: path)
-                }
+                if path == home { canvas.openHome() } else { canvas.openCanvas(at: path) }
             }
             var target: CanvasNode?
             if let id = str(args, "id") { target = canvas.document.node(id) }

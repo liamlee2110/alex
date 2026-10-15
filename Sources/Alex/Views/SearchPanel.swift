@@ -16,7 +16,7 @@ struct SearchPanel: View {
         let hits = results
         VStack(spacing: 0) {
             HStack(spacing: Space.m) {
-                Image(systemName: "magnifyingglass")
+                GlyphImage(.search)
                     .foregroundStyle(Ink.faint)
                 TextField("Find a file or a note", text: $query)
                     .textFieldStyle(.plain)
@@ -27,9 +27,9 @@ struct SearchPanel: View {
             .padding(Space.l)
             Divider()
             if hits.isEmpty {
-                Text("Nothing matches.")
+                Text(query.isEmpty ? "Type a file name or a title." : "Nothing matches “\(query)”.")
                     .font(Typography.meta)
-                    .foregroundStyle(Ink.faint)
+                    .foregroundStyle(Ink.muted)
                     .padding(Space.l)
             } else {
                 VStack(spacing: 1) {
@@ -39,8 +39,8 @@ struct SearchPanel: View {
                             open(hits)
                         } label: {
                             HStack(spacing: Space.m) {
-                                Image(systemName: hit.kind.symbol)
-                                    .foregroundStyle(i == highlighted ? Accent.text : Ink.muted)
+                                GlyphImage(hit.kind.symbol)
+                                    .foregroundStyle(i == highlighted ? Ink.primary : Ink.muted)
                                     .frame(width: 16)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(hit.title)
@@ -49,7 +49,7 @@ struct SearchPanel: View {
                                         .lineLimit(1)
                                     Text(hit.path)
                                         .font(Typography.meta)
-                                        .foregroundStyle(Ink.faint)
+                                        .foregroundStyle(Ink.muted)
                                         .lineLimit(1)
                                 }
                                 Spacer()

@@ -38,6 +38,42 @@ struct Frontmatter: Hashable {
     subscript(key: String) -> FrontmatterValue? { fields[key] }
     var isEmpty: Bool { fields.isEmpty }
 
+    /// The file cut at its closing fence, byte for byte, so the panel and
+    /// the card can edit the body while the block stays exactly as it was,
+    /// or the block while the body does.
+    struct Split: Equatable {
+        /// The lines between the fences, without them.
+        var yaml: String
+        /// The newlines after the closing fence, kept so a join is lossless.
+        var gap: String
+        var body: String
+        var hasBlock: Bool
+
+        func replacingBody(with new: String) -> String {
+            hasBlock ? "---\n" + yaml + "\n---" + gap + new : new
+        }
+
+        func replacingYAML(with new: String) -> String {
+            hasBlock ? "---\n" + new + "\n---" + gap + body : body
+        }
+    }
+
+    static func split(_ text: String) -> Split {
+        let whole = Split(yaml: "", gap: "", body: text, hasBlock: false)
+        guard text.hasPrefix("---") else { return whole }
+        let rest = text.dropFirst(3)
+        guard let close = rest.range(of: "\n---") else { return whole }
+        var yaml = String(rest[..<close.lowerBound])
+        if yaml.hasPrefix("\n") { yaml.removeFirst() }
+        var after = rest[close.upperBound...]
+        var gap = ""
+        while after.hasPrefix("\n") {
+            gap.append("\n")
+            after = after.dropFirst()
+        }
+        return Split(yaml: yaml, gap: gap, body: String(after), hasBlock: true)
+    }
+
     static func parse(_ text: String) -> Frontmatter {
         var out = Frontmatter()
         guard text.hasPrefix("---") else { out.body = text; return out }

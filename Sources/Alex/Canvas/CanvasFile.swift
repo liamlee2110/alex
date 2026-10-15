@@ -114,6 +114,20 @@ struct CanvasNode: Identifiable, Hashable {
         get { extra["x-hue"]?.double }
         set { extra["x-hue"] = newValue.map { .number($0) } }
     }
+
+    /// Folded to its title bar, Heptabase's fold, under `x-folded`. The
+    /// height in the file is the folded one, so another JSON Canvas app
+    /// draws the same short card and nothing has to know about the key;
+    /// `x-unfolded-height` is only what to come back to.
+    var folded: Bool {
+        get { extra["x-folded"]?.bool ?? false }
+        set { extra["x-folded"] = newValue ? .bool(true) : nil }
+    }
+
+    var unfoldedHeight: Double? {
+        get { extra["x-unfolded-height"]?.double }
+        set { extra["x-unfolded-height"] = newValue.map { .number($0) } }
+    }
 }
 
 struct CanvasEdge: Identifiable, Hashable {

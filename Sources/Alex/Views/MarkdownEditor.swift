@@ -190,7 +190,7 @@ enum NoteCheckbox {
             tick.move(to: NSPoint(x: rect.minX + 3.5, y: rect.midY + 0.25))
             tick.line(to: NSPoint(x: rect.minX + 6, y: rect.midY + 2.75))
             tick.line(to: NSPoint(x: rect.maxX - 3.5, y: rect.midY - 2.5))
-            NSColor.white.setStroke()
+            InkNS.inverse.setStroke()
             tick.stroke()
         } else {
             InkNS.guide.setStroke()
@@ -205,12 +205,12 @@ enum NoteCheckbox {
 /// One pass over the whole note per edit: cheap at note scale, and stateless —
 /// every attribute is derived from the text, never accumulated. The pass only
 /// says what each character *is*; whether it's drawn is the view's call.
-private enum NoteStyle {
-    static let baseSize: CGFloat = 14.5
-    static let headingSizes: [CGFloat] = [24, 19, 16]
+enum NoteStyle {
     /// A fence line is hidden, and shrunk so its height is the well's
     /// padding rather than a blank row inside the block.
     static let fenceSize: CGFloat = 8
+    /// The step under a heading, and after a code block's closing fence.
+    static let blockGap: CGFloat = 6
     static let quoteIndent: CGFloat = 14
     static let codeIndent: CGFloat = 10
 
@@ -220,37 +220,57 @@ private enum NoteStyle {
     static let quote   = try! NSRegularExpression(pattern: #"^>[ \t]?"#)
     static let rule    = try! NSRegularExpression(pattern: #"^[ \t]*(-{3,}|\*{3,})[ \t]*$"#)
     static let fence   = try! NSRegularExpression(pattern: #"^```"#)
-    static let code    = try! NSRegularExpression(pattern: #"`([^`\n]+)`"#)
-    static let wiki    = try! NSRegularExpression(pattern: #"\[\[([^\]\n]+)\]\]"#)
-    static let marked  = try! NSRegularExpression(pattern: #"==([^=\n]+)==(?!=)"#)
-    static let bold    = try! NSRegularExpression(pattern: #"\*\*([^*\n]+?)\*\*"#)
-    static let under   = try! NSRegularExpression(pattern: #"__([^_\n]+?)__"#)
-    static let italicA = try! NSRegularExpression(pattern: #"(?<!\*)\*([^*\n]+?)\*(?!\*)"#)
-    static let italicB = try! NSRegularExpression(pattern: #"(?<!_)_([^_\n]+?)_(?!_)"#)
+    // The inline patterns are `NoteFormat`'s, so the format bar says a
+    // mark is on exactly where one is drawn.
+    static let code    = NoteFormat.code
+    static let wiki    = NoteFormat.wiki
+    static let marked  = NoteFormat.marked
+    static let bold    = NoteFormat.bold
+    static let under   = NoteFormat.under
+    static let strike  = NoteFormat.strike
+    static let italicA = NoteFormat.italicA
+    static let italicB = NoteFormat.italicB
 
     static let ownKeys: [NSAttributedString.Key] = [
         .noteBullet, .noteHidden, .noteSpan, .noteMarker, .noteCheckbox, .noteBlock, .noteLink,
     ]
 
-    static func apply(to storage: NSTextStorage) {
+    /// `base` is the prose size and `headings` the three heading sizes:
+    /// the panel's (`Typography.editorSize`) or a card's.
+    /// `ink` is the words' colour: the primary ink, or a text box's colour.
+    static func apply(to storage: NSTextStorage,
+                      base: CGFloat = Typography.editorSize,
+                      headings: [CGFloat] = Typography.editorHeadings,
+                      ink: NSColor = InkNS.primary,
+                      family: FontFamily = .normal,
+                      alignment: NSTextAlignment = .natural) {
         let all = NSRange(location: 0, length: storage.length)
         let text = storage.string as NSString
 
         storage.beginEditing()
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 4
-        paragraph.paragraphSpacing = 6
+        // Words on the desk can sit left, centred or right (revision 47);
+        // every paragraph style below is a copy of this one.
+        paragraph.alignment = alignment
+        // No step after a newline: a newline inside a hard-wrapped paragraph
+        // is a soft break, and the blank line between paragraphs is the gap
+        // (settled with Liam, 2026-09-14). A heading keeps a step under it.
+        paragraph.paragraphSpacing = 0
         // Every tab is one level of nesting, so every tab stop is one step.
         paragraph.tabStops = []
         paragraph.defaultTabInterval = ListIndent.step
         // Reset by key, never by replacing the whole attribute dictionary —
         // image attachments live in that dictionary and must survive the pass.
         storage.removeAttribute(.underlineStyle, range: all)
+        storage.removeAttribute(.strikethroughStyle, range: all)
         storage.removeAttribute(.backgroundColor, range: all)
+        storage.removeAttribute(.strokeWidth, range: all)
+        storage.removeAttribute(.obliqueness, range: all)
         for key in ownKeys { storage.removeAttribute(key, range: all) }
         storage.addAttributes([
-            .font: NSFont.systemFont(ofSize: baseSize),
-            .foregroundColor: InkNS.primary,
+            .font: DeskFace.font(family, size: base),
+            .foregroundColor: ink,
             .paragraphStyle: paragraph,
         ], range: all)
 
@@ -271,7 +291,7 @@ private enum NoteStyle {
                 // inside the well the lines sit tight.
                 let edge = paragraph.mutableCopy() as! NSMutableParagraphStyle
                 edge.lineSpacing = 0
-                edge.paragraphSpacing = inFence ? paragraph.paragraphSpacing : 0
+                edge.paragraphSpacing = inFence ? blockGap : 0
                 storage.addAttributes([
                     .font: NSFont.systemFont(ofSize: fenceSize),
                     .paragraphStyle: edge,
@@ -282,7 +302,7 @@ private enum NoteStyle {
             }
             if inFence {
                 storage.addAttributes([
-                    .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                    .font: NSFont.monospacedSystemFont(ofSize: base - 1.5, weight: .regular),
                     .foregroundColor: InkNS.muted,
                 ], range: lineRange)
                 let inset = indented(paragraph, by: codeIndent).mutableCopy() as! NSMutableParagraphStyle
@@ -295,10 +315,13 @@ private enum NoteStyle {
             }
 
             if let m = heading.firstMatch(in: line, range: whole) {
-                let level = m.range(at: 1).length
+                let level = min(m.range(at: 1).length, headings.count)
+                let under = paragraph.mutableCopy() as! NSMutableParagraphStyle
+                under.paragraphSpacing = blockGap
                 storage.addAttribute(.font,
-                    value: NSFont.systemFont(ofSize: headingSizes[level - 1], weight: .medium),
+                    value: DeskFace.font(family, size: headings[level - 1], weight: .medium),
                     range: lineRange)
+                storage.addAttribute(.paragraphStyle, value: under, range: enclosing)
                 hide(storage, at(m.range), marker: true)
             } else if rule.firstMatch(in: line, range: whole) != nil {
                 hide(storage, lineRange, marker: true)
@@ -306,8 +329,7 @@ private enum NoteStyle {
                                      range: enclosing)
             } else if let m = quote.firstMatch(in: line, range: whole) {
                 storage.addAttribute(.foregroundColor, value: InkNS.muted, range: lineRange)
-                storage.addAttribute(.font,
-                    value: italic(NSFont.systemFont(ofSize: baseSize)), range: lineRange)
+                retrait(storage, lineRange, trait: .italicFontMask)
                 hide(storage, at(m.range), marker: true)
                 storage.addAttributes([
                     .paragraphStyle: indented(paragraph, by: quoteIndent),
@@ -352,7 +374,7 @@ private enum NoteStyle {
                                       range: at(m.range(at: 2)))
             }
 
-            inline(storage, line: line, at: lineRange.location)
+            inline(storage, line: line, at: lineRange.location, base: base)
         }
         storage.endEditing()
     }
@@ -376,7 +398,7 @@ private enum NoteStyle {
     /// Inline spans, one line at a time, code first so nothing styles inside
     /// backticks. Each span's marks are hidden and the span is recorded, so
     /// the view can show the marks of the one the caret is in.
-    private static func inline(_ storage: NSTextStorage, line: String, at offset: Int) {
+    private static func inline(_ storage: NSTextStorage, line: String, at offset: Int, base: CGFloat) {
         let whole = NSRange(location: 0, length: (line as NSString).length)
         var taken: [NSRange] = []
         func free(_ r: NSRange) -> Bool { !taken.contains { NSIntersectionRange($0, r).length > 0 } }
@@ -391,7 +413,7 @@ private enum NoteStyle {
         for m in code.matches(in: line, range: whole) {
             taken.append(m.range)
             storage.addAttributes([
-                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                .font: NSFont.monospacedSystemFont(ofSize: base - 1.5, weight: .regular),
                 .backgroundColor: InkNS.hairline.withAlphaComponent(0.55),
             ], range: shift(m.range))
             span(m, marks: 1)
@@ -424,6 +446,12 @@ private enum NoteStyle {
                 value: NSUnderlineStyle.single.rawValue, range: shift(m.range(at: 1)))
             span(m, marks: 2)
         }
+        for m in strike.matches(in: line, range: whole) where free(m.range) {
+            taken.append(m.range)
+            storage.addAttribute(.strikethroughStyle,
+                value: NSUnderlineStyle.single.rawValue, range: shift(m.range(at: 1)))
+            span(m, marks: 2)
+        }
         for rx in [italicA, italicB] {
             for m in rx.matches(in: line, range: whole) where free(m.range) {
                 taken.append(m.range)
@@ -433,18 +461,27 @@ private enum NoteStyle {
         }
     }
 
+    /// Bold or italic in the face's own cut. A face with none, as
+    /// Excalifont has none (revision 36), is thickened or slanted instead,
+    /// the way a browser fakes a missing weight, so the mark still shows.
     private static func retrait(_ storage: NSTextStorage, _ range: NSRange,
                                 trait: NSFontTraitMask) {
         storage.enumerateAttribute(.font, in: range) { value, r, _ in
             guard let font = value as? NSFont else { return }
-            storage.addAttribute(.font,
-                value: NSFontManager.shared.convert(font, toHaveTrait: trait), range: r)
+            let converted = NSFontManager.shared.convert(font, toHaveTrait: trait)
+            if NSFontManager.shared.traits(of: converted).contains(trait) {
+                storage.addAttribute(.font, value: converted, range: r)
+            } else if trait == .boldFontMask {
+                storage.addAttribute(.strokeWidth, value: fakeBold, range: r)
+            } else {
+                storage.addAttribute(.obliqueness, value: fakeSlant, range: r)
+            }
         }
     }
 
-    private static func italic(_ font: NSFont) -> NSFont {
-        NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
-    }
+    /// A negative stroke fills and strokes, thickening the glyph a little.
+    private static let fakeBold: CGFloat = -5
+    private static let fakeSlant: CGFloat = 0.18
 }
 
 // MARK: - Layout manager
@@ -557,6 +594,15 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
     /// Grows with its content so the page scrolls as one document — no boxed
     /// inner scrollbar unless the host asks for one.
     var growsWithContent = true
+    /// A preview rather than an editor (revision 18): a card on the desk
+    /// draws its note through this view so it reads as the panel reads,
+    /// and the view takes nothing — no click, no hover, no cursor — so the
+    /// card's own selection and drag see straight through it.
+    var passive = false
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        passive ? nil : super.hitTest(point)
+    }
     /// Where `![alt](path)` resolves and where pasted images are written:
     /// the note's own directory.
     var imageBase: URL?
@@ -771,6 +817,7 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
         }
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         updateReveal()
+        if stillSelecting { formatBar?.hide() } else { scheduleFormatBar() }
     }
 
     /// ⌫ at the start of a block's words: a nested item climbs a level, like
@@ -824,7 +871,8 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let hoverArea { removeTrackingArea(hoverArea) }
+        if let hoverArea { removeTrackingArea(hoverArea); self.hoverArea = nil }
+        guard !passive else { return }
         let area = NSTrackingArea(rect: .zero,
                                   options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
                                   owner: self, userInfo: nil)
@@ -864,45 +912,22 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
 
     // MARK: Shortcuts
 
+    /// The format bar's marks on the keys Notion gives them. Only the note
+    /// with the caret answers: every editor in the window is asked.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
-            switch event.charactersIgnoringModifiers {
-            case "b": toggleWrap("**"); return true
-            case "i": toggleWrap("*");  return true
-            case "u": toggleWrap("__"); return true
-            default: break
-            }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        var mark: NoteFormat.Mark?
+        if flags == .command {
+            mark = ["b": .bold, "i": .italic, "u": .underline, "e": .code][key]
+        } else if flags == [.command, .shift] {
+            mark = ["x": .strike, "h": .highlight][key]
+        }
+        if let mark, isEditable, window?.firstResponder === self {
+            applyFormat(mark)
+            return true
         }
         return super.performKeyEquivalent(with: event)
-    }
-
-    /// Wrap the selection in a mark, or unwrap it if it's already wrapped —
-    /// operating on the source, through the undo stack.
-    private func toggleWrap(_ mark: String) {
-        let sel = selectedRange()
-        let ns = string as NSString
-        let markLen = (mark as NSString).length
-
-        // Already wrapped just outside the selection? Strip.
-        let before = NSRange(location: sel.location - markLen, length: markLen)
-        let after = NSRange(location: sel.location + sel.length, length: markLen)
-        if before.location >= 0, after.location + after.length <= ns.length,
-           ns.substring(with: before) == mark, ns.substring(with: after) == mark {
-            let outer = NSRange(location: before.location,
-                                length: sel.length + 2 * markLen)
-            replace(outer, with: ns.substring(with: sel))
-            setSelectedRange(NSRange(location: before.location, length: sel.length))
-            return
-        }
-
-        let inner = ns.substring(with: sel)
-        if inner.hasPrefix(mark), inner.hasSuffix(mark), inner.count >= 2 * mark.count {
-            replace(sel, with: String(inner.dropFirst(mark.count).dropLast(mark.count)))
-            setSelectedRange(NSRange(location: sel.location, length: sel.length - 2 * markLen))
-        } else {
-            replace(sel, with: mark + inner + mark)
-            setSelectedRange(NSRange(location: sel.location + markLen, length: sel.length))
-        }
     }
 
     private func replace(_ range: NSRange, with text: String) {
@@ -1059,11 +1084,44 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
             default: break
             }
         }
+        if event.keyCode == 53, formatBar?.isVisible == true {
+            formatBar?.hide()
+            return
+        }
+        // Esc or ⌘↩ puts the pen down on the desk, as Excalidraw's text
+        // editor does (revision 50); a menu or the format bar open takes
+        // Esc first, above.
+        if let onDone, event.keyCode == 53
+            || (event.keyCode == 36 && event.modifierFlags.contains(.command)) {
+            onDone()
+            return
+        }
         super.keyDown(with: event)
     }
 
     /// Called with a `[[name]]` target when one is clicked.
     var onOpenLink: ((String) -> Void)?
+    /// Esc or ⌘↩ on the desk: writing is done (revision 50).
+    var onDone: (() -> Void)?
+
+    // SwiftUI's hosting view answers `undo:` with the window's canvas
+    // steps before the chain reaches the window, so the editor takes ⌘Z
+    // itself, with its own stack (revision 52).
+    @objc func undo(_ sender: Any?) { undoManager?.undo() }
+    @objc func redo(_ sender: Any?) { undoManager?.redo() }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(undo(_:)):
+            (item as? NSMenuItem)?.title = undoManager?.undoMenuItemTitle ?? "Undo"
+            return undoManager?.canUndo == true
+        case #selector(redo(_:)):
+            (item as? NSMenuItem)?.title = undoManager?.redoMenuItemTitle ?? "Redo"
+            return undoManager?.canRedo == true
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
+    }
 
     private func link(at point: NSPoint) -> String? {
         guard let storage = textStorage, storage.length > 0, let lm = layoutManager, let tc = textContainer else { return nil }
@@ -1080,6 +1138,7 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
 
     override func mouseDown(with event: NSEvent) {
         closeSlashMenu()
+        formatBar?.hide()
         let p = convert(event.locationInWindow, from: nil)
         if let box = checkboxHits().first(where: { $0.hit.contains(p) }) {
             toggleCheckbox(box.range)
@@ -1096,11 +1155,13 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
 
     override func resignFirstResponder() -> Bool {
         closeSlashMenu()
+        formatBar?.hide()
         return super.resignFirstResponder()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         closeSlashMenu()
+        formatBar?.hide()
         super.viewWillMove(toWindow: newWindow)
     }
 
@@ -1184,6 +1245,104 @@ final class MarkdownTextView: NSTextView, NSLayoutManagerDelegate {
         replace(typed, with: block.snippet)
         if let at = block.caretAt {
             setSelectedRange(NSRange(location: typed.location + at, length: 0))
+        }
+    }
+
+    // MARK: Format bar
+
+    private var formatBar: FormatBar?
+    private var formatBarPending = false
+    /// Words on the desk: their size, for the bar's size menu.
+    var textSize: TextSize?
+    var onTextSize: ((TextSize) -> Void)?
+    /// The words' face, for the bar's menu (revision 36).
+    var family: FontFamily = .normal
+    var onFamily: ((FontFamily) -> Void)?
+
+    /// The words were restyled under a standing bar: it moves with them.
+    func formatBarNeedsUpdate() {
+        if formatBar?.isVisible == true { scheduleFormatBar() }
+    }
+
+    /// After the selection settles, on the next turn of the loop, so a
+    /// drag's last move and the layout it causes are done first.
+    private func scheduleFormatBar() {
+        guard !formatBarPending else { return }
+        formatBarPending = true
+        DispatchQueue.main.async { [weak self] in
+            self?.formatBarPending = false
+            self?.updateFormatBar()
+        }
+    }
+
+    /// Over the selected words while there are some, in this note, with
+    /// the keyboard; gone otherwise.
+    private func updateFormatBar() {
+        let sel = selectedRange()
+        let source = string as NSString
+        guard isEditable, !passive, !slashActive, let window, window.firstResponder === self,
+              sel.length > 0, NSMaxRange(sel) <= source.length,
+              !NoteFormat.portions(of: source, in: sel).isEmpty,
+              let lm = layoutManager, let tc = textContainer else {
+            formatBar?.hide()
+            return
+        }
+        let glyphs = lm.glyphRange(forCharacterRange: sel, actualCharacterRange: nil)
+        let rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+            .intersection(visibleRect)
+        guard !rect.isEmpty else { formatBar?.hide(); return }
+        let bar = formatBar ?? makeFormatBar()
+        bar.model.active = NoteFormat.active(in: string, selection: sel)
+        bar.model.block = NoteFormat.block(in: string, at: sel.location)
+        bar.model.size = onTextSize == nil ? nil : textSize ?? .medium
+        bar.model.family = onFamily == nil ? nil : family
+        let screen = window.convertToScreen(convert(rect, to: nil))
+        let lead = max(screen.minX, firstRect(forCharacterRange: sel, actualRange: nil).minX)
+        bar.show(over: screen, lead: lead, room: window.frame, in: window)
+    }
+
+    private func makeFormatBar() -> FormatBar {
+        let bar = FormatBar()
+        bar.model.toggle = { [weak self] mark in self?.applyFormat(mark) }
+        bar.model.resize = { [weak self] size in self?.onTextSize?(size) }
+        bar.model.refamily = { [weak self] family in self?.onFamily?(family) }
+        bar.model.turn = { [weak self] kind in
+            guard let self else { return }
+            self.apply(NoteFormat.turn(self.string, selection: self.selectedRange(), into: kind))
+        }
+        formatBar = bar
+        return bar
+    }
+
+    private func applyFormat(_ mark: NoteFormat.Mark) {
+        guard let edit = NoteFormat.toggle(mark, in: string, selection: selectedRange()) else { return }
+        apply(edit)
+    }
+
+    /// One edit, one undo step. A pasted image is a character in the
+    /// storage and a file on disk; rewriting its line as plain text would
+    /// drop it, so an edit across one is refused.
+    private func apply(_ edit: NoteFormat.Edit) {
+        guard let storage = textStorage, NSMaxRange(edit.range) <= storage.length else { return }
+        if storage.containsAttachments(in: edit.range) { NSSound.beep(); return }
+        replace(edit.range, with: edit.replacement)
+        setSelectedRange(edit.selection)
+    }
+
+    /// `--select-text <words>`: those words selected in the first note that
+    /// holds them, for a snapshot of the bar.
+    private static let selectText = Launch.value(after: "--select-text")
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let words = Self.selectText, window != nil, !passive, isEditable else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, let window = self.window else { return }
+            let r = (self.string as NSString).range(of: words)
+            guard r.location != NSNotFound else { return }
+            window.makeFirstResponder(self)
+            self.setSelectedRange(r)
         }
     }
 
@@ -1295,32 +1454,32 @@ fileprivate struct ListItem {
 /// snippet after insertion; nil means the end.
 fileprivate struct NoteBlock: Identifiable {
     let title: String
-    let symbol: String
+    let symbol: Glyph
     var snippet: String = ""
     var caretAt: Int? = nil
     var isImage = false
     var id: String { title }
 
     static let all: [NoteBlock] = [
-        NoteBlock(title: "Heading 1", symbol: "textformat.size.larger", snippet: "# "),
-        NoteBlock(title: "Heading 2", symbol: "textformat.size", snippet: "## "),
-        NoteBlock(title: "Heading 3", symbol: "textformat.size.smaller", snippet: "### "),
-        NoteBlock(title: "Bulleted list", symbol: "list.bullet", snippet: "- "),
-        NoteBlock(title: "Numbered list", symbol: "list.number", snippet: "1. "),
-        NoteBlock(title: "Checklist", symbol: "checklist", snippet: "- [ ] "),
-        NoteBlock(title: "Quote", symbol: "text.quote", snippet: "> "),
-        NoteBlock(title: "Code block", symbol: "chevron.left.forwardslash.chevron.right",
+        NoteBlock(title: "Heading 1", symbol: .heading1, snippet: "# "),
+        NoteBlock(title: "Heading 2", symbol: .heading2, snippet: "## "),
+        NoteBlock(title: "Heading 3", symbol: .heading3, snippet: "### "),
+        NoteBlock(title: "Bulleted list", symbol: .list, snippet: "- "),
+        NoteBlock(title: "Numbered list", symbol: .listOrdered, snippet: "1. "),
+        NoteBlock(title: "Checklist", symbol: .listChecks, snippet: "- [ ] "),
+        NoteBlock(title: "Quote", symbol: .textQuote, snippet: "> "),
+        NoteBlock(title: "Code block", symbol: .codeXml,
                   snippet: "```\n\n```", caretAt: 4),
-        NoteBlock(title: "Divider", symbol: "minus", snippet: "---\n"),
-        NoteBlock(title: "Table", symbol: "tablecells",
+        NoteBlock(title: "Divider", symbol: .separatorHorizontal, snippet: "---\n"),
+        NoteBlock(title: "Table", symbol: .table,
                   snippet: "| Column | Column |\n| --- | --- |\n|  |  |\n", caretAt: 2),
-        NoteBlock(title: "Math block", symbol: "function", snippet: "$$\n\n$$", caretAt: 3),
-        NoteBlock(title: "Inline math", symbol: "x.squareroot", snippet: "$$", caretAt: 1),
-        NoteBlock(title: "Highlight", symbol: "highlighter", snippet: "====", caretAt: 2),
-        NoteBlock(title: "Link to a note", symbol: "link", snippet: "[[]]", caretAt: 2),
-        NoteBlock(title: "Date", symbol: "calendar", snippet: NoteBlock.today()),
-        NoteBlock(title: "Now", symbol: "clock", snippet: NoteBlock.now()),
-        NoteBlock(title: "Image\u{2026}", symbol: "photo", isImage: true),
+        NoteBlock(title: "Math block", symbol: .squareFunction, snippet: "$$\n\n$$", caretAt: 3),
+        NoteBlock(title: "Inline math", symbol: .radical, snippet: "$$", caretAt: 1),
+        NoteBlock(title: "Highlight", symbol: .highlighter, snippet: "====", caretAt: 2),
+        NoteBlock(title: "Link to a note", symbol: .link, snippet: "[[]]", caretAt: 2),
+        NoteBlock(title: "Date", symbol: .calendar, snippet: NoteBlock.today()),
+        NoteBlock(title: "Now", symbol: .clock, snippet: NoteBlock.now()),
+        NoteBlock(title: "Image\u{2026}", symbol: .image, isImage: true),
     ]
 
     static func today() -> String {
@@ -1372,9 +1531,8 @@ fileprivate struct SlashMenuView: View {
                     model.pick(block)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: block.symbol)
-                            .font(Typography.label)
-                            .foregroundStyle(i == model.highlighted ? Accent.text : Ink.muted)
+                        GlyphImage(block.symbol)
+                            .foregroundStyle(i == model.highlighted ? Ink.primary : Ink.muted)
                             .frame(width: 16)
                         Text(block.title)
                             .font(Typography.control)
@@ -1411,8 +1569,29 @@ struct MarkdownEditor: NSViewRepresentable {
     var imageBase: URL? = nil
     var imageStem = "image"
     var editable = true
+    /// The prose size and the heading sizes: the panel's unless a card says.
+    var baseSize: CGFloat = Typography.editorSize
+    var headingSizes: [CGFloat] = Typography.editorHeadings
+    /// Takes the keyboard as soon as it is up: a card opened to be written on.
+    var takesFocus = false
+    /// The words' colour when it is not the primary ink: a text box's.
+    var ink: NSColor? = nil
+    /// Words on the desk: their size, which the format bar offers to
+    /// change through `onTextSize` (revision 33). nil for a note.
+    var textSize: TextSize? = nil
+    var onTextSize: ((TextSize) -> Void)? = nil
+    /// The face the words are drawn in (revision 36): the panel's is the
+    /// system's; a card, a sticky, a text box or a shape says its own.
+    var family: FontFamily = .normal
+    var onFamily: ((FontFamily) -> Void)? = nil
+    /// Where the words sit across the box (revision 47): a sticky's, a
+    /// text box's or a shape's own; natural for a note.
+    var alignment: NSTextAlignment = .natural
     /// A `[[name]]` was clicked.
     var onOpenLink: ((String) -> Void)? = nil
+    /// Esc or ⌘↩: writing on the desk is done (revision 50). Nil where
+    /// Esc means something else, as in the panel.
+    var onDone: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
@@ -1423,6 +1602,19 @@ struct MarkdownEditor: NSViewRepresentable {
         view.imageStem = imageStem
         view.isEditable = editable
         view.onOpenLink = onOpenLink
+        view.onDone = onDone
+        context.coordinator.base = baseSize
+        context.coordinator.headings = headingSizes
+        context.coordinator.ink = ink ?? InkNS.primary
+        context.coordinator.family = family
+        context.coordinator.alignment = alignment
+        view.textSize = textSize
+        view.onTextSize = onTextSize
+        view.family = family
+        view.onFamily = onFamily
+        if takesFocus {
+            DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+        }
         view.delegate = context.coordinator
         view.allowsUndo = true
         view.isRichText = true
@@ -1464,6 +1656,21 @@ struct MarkdownEditor: NSViewRepresentable {
         view.imageStem = imageStem
         view.isEditable = editable
         view.onOpenLink = onOpenLink
+        view.onDone = onDone
+        view.textSize = textSize
+        view.onTextSize = onTextSize
+        view.family = family
+        view.onFamily = onFamily
+        // A new size, colour or face restyles what is there; the words are the same.
+        let restyle = context.coordinator.base != baseSize || context.coordinator.headings != headingSizes
+            || context.coordinator.ink != (ink ?? InkNS.primary) || context.coordinator.family != family
+            || context.coordinator.alignment != alignment
+        context.coordinator.base = baseSize
+        context.coordinator.headings = headingSizes
+        context.coordinator.ink = ink ?? InkNS.primary
+        context.coordinator.family = family
+        context.coordinator.alignment = alignment
+        if restyle { context.coordinator.restyle() }
         guard NoteMarkdown.markdown(from: view.attributedString()) != text else { return }
         context.coordinator.push(markdown: text)
     }
@@ -1471,9 +1678,20 @@ struct MarkdownEditor: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var text: Binding<String>
         weak var view: MarkdownTextView?
+        var base: CGFloat = Typography.editorSize
+        var headings: [CGFloat] = Typography.editorHeadings
+        var ink: NSColor = InkNS.primary
+        var family: FontFamily = .normal
+        var alignment: NSTextAlignment = .natural
         private var updating = false
 
+        /// The editor's own undo (revision 52): typing is taken back in
+        /// the editor, never mixed in with the window's canvas steps.
+        private let undo = UndoManager()
+
         init(text: Binding<String>) { self.text = text }
+
+        func undoManager(for view: NSTextView) -> UndoManager? { undo }
 
         func push(markdown: String) {
             guard let view, let storage = view.textStorage else { return }
@@ -1484,14 +1702,24 @@ struct MarkdownEditor: NSViewRepresentable {
             let width = laidOut > 50 ? laidOut : 420
             storage.setAttributedString(
                 NoteMarkdown.attributed(from: markdown, width: width, base: view.imageBase))
-            NoteStyle.apply(to: storage)
+            NoteStyle.apply(to: storage, base: base, headings: headings, ink: ink, family: family,
+                            alignment: alignment)
             view.noteDidRestyle()
             updating = false
         }
 
+        func restyle() {
+            guard let view, let storage = view.textStorage else { return }
+            NoteStyle.apply(to: storage, base: base, headings: headings, ink: ink, family: family,
+                            alignment: alignment)
+            view.noteDidRestyle()
+            view.formatBarNeedsUpdate()
+        }
+
         func textDidChange(_ notification: Notification) {
             guard !updating, let view, let storage = view.textStorage else { return }
-            NoteStyle.apply(to: storage)
+            NoteStyle.apply(to: storage, base: base, headings: headings, ink: ink, family: family,
+                            alignment: alignment)
             view.noteDidRestyle()
             text.wrappedValue = NoteMarkdown.markdown(from: view.attributedString())
         }

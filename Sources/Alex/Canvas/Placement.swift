@@ -1,40 +1,82 @@
 import Foundation
 import CoreGraphics
 
-/// Where things go when nobody has placed them yet: the first visit to a
-/// directory, and a card the door adds without coordinates.
+/// Where things go when nobody has placed them yet: a card the door adds
+/// without coordinates, the tray's "Place everything". (Home's folders and
+/// their files are placed by `Folders`.)
 enum Placement {
-    static let folderSize = CGSize(width: 200, height: 150)
     static let cardSize = CGSize(width: 320, height: 200)
+    /// A document is page-shaped, as Heptabase makes it: a paper lying on a
+    /// landscape card is a paper nobody can read. Letter and A4 are both
+    /// near 1 : 1.3.
+    static let documentSize = CGSize(width: 320, height: 414)
     static let textSize = CGSize(width: 240, height: 160)
+    /// A folded card: one title row, the height written into the file so
+    /// another JSON Canvas app draws the same short card.
+    static let foldedHeight: Double = 44
     static let origin = CGPoint(x: 80, y: 80)
     static let columns = 5
-    static let folderGap = CGSize(width: 100, height: 90)
     static let cardGap = CGSize(width: 40, height: 40)
 
-    /// Folders in rows, then files in rows: a grid a hand can rearrange.
+    /// The card a file gets when nobody has sized it: a document's page
+    /// shape, a card otherwise.
+    static func size(for entry: VaultEntry) -> CGSize {
+        switch entry.kind {
+        case .pdf: return documentSize
+        default: return cardSize
+        }
+    }
+
+    static func size(forFile path: String, isDirectory: Bool) -> CGSize {
+        size(for: VaultEntry(path: path, isDirectory: isDirectory))
+    }
+
+    /// A pasted picture's card: a card's width and the picture's own shape,
+    /// kept between a strip and a page so a panorama or a phone screenshot
+    /// still lands as something you can grab.
+    static func size(forImage pixels: CGSize) -> CGSize {
+        guard pixels.width > 0, pixels.height > 0 else { return cardSize }
+        let width = cardSize.width
+        let height = (width * pixels.height / pixels.width).rounded()
+        return CGSize(width: width, height: min(max(height, 120), 640))
+    }
+
+    /// The file a pasted picture is written to, as Obsidian names it:
+    /// `Pasted image 2026-09-29 14.32.png`, then ` 2`, ` 3` while taken.
+    static func pastedImageName(at date: Date, taken: (String) -> Bool) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd HH.mm"
+        let stem = "Pasted image \(format.string(from: date))"
+        var name = "\(stem).png"
+        var i = 2
+        while taken(name) {
+            name = "\(stem) \(i).png"
+            i += 1
+        }
+        return name
+    }
+
+    /// Files in rows: a grid a hand can rearrange. A row is as tall as the
+    /// tallest card in it, so a page-shaped document does not sit on the
+    /// row beneath it. A folder has no card; it is a section on Home.
     static func autoLayout(_ entries: [VaultEntry]) -> [CanvasNode] {
         var nodes: [CanvasNode] = []
-        let folders = entries.filter(\.isDirectory)
         let files = entries.filter { !$0.isDirectory }
         var y = origin.y
-        for (i, entry) in folders.enumerated() {
-            let col = Double(i % columns), row = Double(i / columns)
-            let frame = CGRect(x: origin.x + col * (folderSize.width + folderGap.width),
-                               y: y + row * (folderSize.height + folderGap.height),
-                               width: folderSize.width, height: folderSize.height)
+        var column = 0, rowHeight = 0.0
+        for entry in files {
+            let size = size(for: entry)
+            let frame = CGRect(x: origin.x + Double(column) * (cardSize.width + cardGap.width),
+                               y: y, width: size.width, height: size.height)
             nodes.append(CanvasNode(kind: .file, frame: frame, file: entry.path))
-        }
-        if !folders.isEmpty {
-            let rows = Double((folders.count + columns - 1) / columns)
-            y += rows * (folderSize.height + folderGap.height) + 40
-        }
-        for (i, entry) in files.enumerated() {
-            let col = Double(i % columns), row = Double(i / columns)
-            let frame = CGRect(x: origin.x + col * (cardSize.width + cardGap.width),
-                               y: y + row * (cardSize.height + cardGap.height),
-                               width: cardSize.width, height: cardSize.height)
-            nodes.append(CanvasNode(kind: .file, frame: frame, file: entry.path))
+            rowHeight = max(rowHeight, size.height)
+            column += 1
+            if column == columns {
+                column = 0
+                y += rowHeight + cardGap.height
+                rowHeight = 0
+            }
         }
         return nodes
     }

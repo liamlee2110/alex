@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import QuickLookThumbnailing
 
 /// QuickLook thumbnails, cached by path and modification date. The OS renders
@@ -9,8 +10,15 @@ final class Thumbnails: ObservableObject {
     static let shared = Thumbnails()
 
     @Published private(set) var images: [String: NSImage] = [:]
+    @Published private(set) var pages: [String: PagePreview] = [:]
     private var pending: Set<String> = []
     private var failed: Set<String> = []
+
+    /// A document's first page and how many pages it has.
+    struct PagePreview: Hashable {
+        let image: NSImage
+        let pages: Int
+    }
 
     func image(for url: URL, size: CGSize) -> NSImage? {
         let key = Self.key(url)
@@ -27,6 +35,39 @@ final class Thumbnails: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// A PDF's first page, drawn by PDFKit at the width the card takes on
+    /// screen. QuickLook sizes a file's thumbnail once, for whoever asks
+    /// first, which is right for a folder's peek and far too coarse for a
+    /// card that shows the page itself. `width` is in points; the render is
+    /// in pixels, rounded to a step so a pinch does not redraw every frame
+    /// and capped so a zoomed-in page cannot cost tens of megabytes.
+    func page(for url: URL, width: CGFloat) -> PagePreview? {
+        let step: CGFloat = 320
+        let pixels = width * (NSScreen.main?.backingScaleFactor ?? 2)
+        let bucket = min(max((pixels / step).rounded(.up) * step, step * 2), step * 4)
+        let key = Self.key(url) + "@\(Int(bucket))"
+        if let ready = pages[key] { return ready }
+        guard !pending.contains(key), !failed.contains(key) else { return nil }
+        pending.insert(key)
+        Task.detached(priority: .userInitiated) {
+            let rendered = Self.renderFirstPage(of: url, width: bucket)
+            await MainActor.run {
+                self.pending.remove(key)
+                if let rendered { self.pages[key] = rendered } else { self.failed.insert(key) }
+            }
+        }
+        return nil
+    }
+
+    private nonisolated static func renderFirstPage(of url: URL, width: CGFloat) -> PagePreview? {
+        guard let document = PDFDocument(url: url), let first = document.page(at: 0) else { return nil }
+        let bounds = first.bounds(for: .mediaBox)
+        guard bounds.width > 1, bounds.height > 1 else { return nil }
+        let size = CGSize(width: width, height: (width * bounds.height / bounds.width).rounded())
+        return PagePreview(image: first.thumbnail(of: size, for: .mediaBox),
+                           pages: max(document.pageCount, 1))
     }
 
     static func key(_ url: URL) -> String {

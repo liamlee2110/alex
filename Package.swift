@@ -8,6 +8,7 @@ let package = Package(
         .executableTarget(
             name: "Alex",
             path: "Sources/Alex",
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]

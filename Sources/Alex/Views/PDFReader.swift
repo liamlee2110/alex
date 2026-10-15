@@ -139,7 +139,10 @@ struct PDFReader: View {
                     store.quote(text, from: path, page: model.selectedPage)
                 }
             } label: {
-                Label("Quote onto the desk", systemImage: "rectangle.3.group")
+                HStack(spacing: Space.xs) {
+                    GlyphImage(.layoutDashboard)
+                    Text("Quote onto the desk")
+                }
             }
             .help("A card on the desk, quoting this, linked back here")
             Button {
@@ -148,7 +151,8 @@ struct PDFReader: View {
                     NSPasteboard.general.setString(text, forType: .string)
                 }
             } label: {
-                Image(systemName: "doc.on.doc")
+                GlyphImage(.copy)
+                    .accessibilityLabel("Copy")
             }
             .help("Copy")
             Divider().frame(height: 18)
@@ -163,13 +167,15 @@ struct PDFReader: View {
                 }
                 .buttonStyle(.plain)
                 .help("Highlight in \(name)")
+                .accessibilityLabel("Highlight in \(name)")
             }
             Spacer()
             if model.selectionHasHighlight {
                 Button {
                     if let data = model.removeHighlights() { save(data) }
                 } label: {
-                    Image(systemName: "trash")
+                    GlyphImage(.trash)
+                        .accessibilityLabel("Remove the highlight")
                 }
                 .help("Remove the highlight")
             }
@@ -183,44 +189,37 @@ struct PDFReader: View {
 
     private var toolbar: some View {
         HStack(spacing: 2) {
-            tool("plus.magnifyingglass", "Zoom in") { model.zoom(by: 1.25) }
-            tool("minus.magnifyingglass", "Zoom out") { model.zoom(by: 0.8) }
-            tool("arrow.left.and.right", "Fit width") { model.fitWidth() }
-            Divider().frame(height: 16).overlay(Color.white.opacity(0.3))
-            tool("chevron.left", "Previous page") { model.go(by: -1) }
+            tool(.zoomIn, "Zoom in") { model.zoom(by: 1.25) }
+            tool(.zoomOut, "Zoom out") { model.zoom(by: 0.8) }
+            tool(.moveHorizontal, "Fit width") { model.fitWidth() }
+            Divider().frame(height: 16).overlay(Ink.inverse.opacity(0.3))
+            tool(.chevronLeft, "Previous page") { model.go(by: -1) }
             Text("\(model.page) / \(model.pageCount)")
                 .font(Typography.control)
-                .foregroundStyle(.white)
+                .monospacedDigit()
+                .foregroundStyle(Ink.inverse)
                 .fixedSize()
                 .frame(minWidth: 44)
-            tool("chevron.right", "Next page") { model.go(by: 1) }
-            Divider().frame(height: 16).overlay(Color.white.opacity(0.3))
+            tool(.chevronRight, "Next page") { model.go(by: 1) }
+            Divider().frame(height: 16).overlay(Ink.inverse.opacity(0.3))
             TextField("Find", text: $model.query)
                 .textFieldStyle(.plain)
                 .font(Typography.body)
-                .foregroundStyle(.white)
+                .foregroundStyle(Ink.inverse)
                 .frame(minWidth: 50, idealWidth: 90, maxWidth: 110)
                 .onSubmit { model.find(forward: true) }
-            tool("magnifyingglass", "Find next") { model.find(forward: true) }
+            tool(.search, "Find next") { model.find(forward: true) }
         }
         .padding(.horizontal, Space.s)
         .frame(height: 40)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 440)
-        .background(RoundedRectangle(cornerRadius: Radius.well).fill(Color(light: "2E2E2E", dark: "3A3A3C")))
+        .background(RoundedRectangle(cornerRadius: Radius.well).fill(Ink.readerBar))
         .elevation(.raised)
     }
 
-    private func tool(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(Typography.control)
-                .foregroundStyle(.white)
-                .frame(width: 26, height: 30)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
+    private func tool(_ symbol: Glyph, _ label: String, action: @escaping () -> Void) -> some View {
+        IconButton(symbol: symbol, label: label, ink: Ink.inverse, action: action)
     }
 
     private func save(_ data: Data) {
