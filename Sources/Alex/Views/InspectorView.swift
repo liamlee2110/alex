@@ -161,7 +161,8 @@ struct PanelColumn: View {
         let parent = VaultPath.parent(of: path)
         let title = kind == .directory ? name : store.displayTitle(for: path)
         let detail = title != name ? path : parent.isEmpty ? nil : parent
-        return PanelHead(symbol: kind.symbol, text: title, detail: detail)
+        let symbol = kind == .directory ? kind.symbol : VaultEntry(path: path, isDirectory: false).symbol
+        return PanelHead(symbol: symbol, text: title, detail: detail)
     }
 
     @ViewBuilder private func nodeHead(_ node: CanvasNode) -> some View {
@@ -429,7 +430,7 @@ struct FileInspector: View {
             if let url, let root = vault.root { HTMLPreview(url: url, root: root) } else { cannotShow }
         case .directory:
             DirectoryInspector(path: path, store: store)
-        case .other:
+        case .office, .other:
             cannotShow
         }
     }
@@ -654,7 +655,7 @@ struct DirectoryInspector: View {
                 }
                 ForEach(entries) { entry in
                     HStack(spacing: Space.s) {
-                        GlyphImage(entry.kind.symbol, filled: entry.isDirectory)
+                        GlyphImage(entry.symbol, filled: entry.isDirectory)
                             .foregroundStyle(entry.isDirectory ? Stock.ink(forPath: entry.path) : Ink.faint)
                             .frame(width: 16)
                         Text(entry.name)

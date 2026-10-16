@@ -99,6 +99,9 @@ where things stand. It is generic enough for any folder of notes.
 - A PDF is a page-shaped card: its first page drawn at the card's width on
   the desk's grey, with the file's name and its length underneath. It is a
   document, not a cropped thumbnail.
+- So are Word, PowerPoint and Excel files, and Pages, Keynote and Numbers:
+  the first page or slide as QuickLook draws it, a deck on a slide-shaped
+  card, with the slide, page or sheet count where the file says it.
 - A link is a card too: a YouTube video, a post on X or Threads, a Pin, a
   reel, a Vimeo, TikTok or Spotify item, or any page. The card shows the
   picture and title the site publishes (a post shows its text); the panel

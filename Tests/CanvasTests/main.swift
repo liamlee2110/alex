@@ -575,6 +575,13 @@ func storeTests() {
     check(Placement.size(forFile: "papers/inertia.pdf", isDirectory: false) == Placement.documentSize,
           "a document is page-shaped")
     check(Placement.size(forFile: "alpha.md", isDirectory: false) == Placement.cardSize, "a note is a card")
+    check(Placement.size(forFile: "Report.docx", isDirectory: false) == Placement.documentSize,
+          "a Word file is page-shaped (revision 61)")
+    check(Placement.size(forFile: "Costs.xlsx", isDirectory: false) == Placement.documentSize, "so is a workbook")
+    check(Placement.size(forFile: "Lecture.pptx", isDirectory: false) == Placement.slideSize
+          && Placement.size(forFile: "Talk.key", isDirectory: false) == Placement.slideSize, "a deck is slide-shaped")
+    check(abs((Placement.slideSize.width - 20) * 9 / 16 + 20 + 30 - Placement.slideSize.height) < 2,
+          "a 16 : 9 slide fills the deck card between its margins and its name row")
     let mixed = Placement.autoLayout((0..<7).map {
         VaultEntry(path: $0 == 1 ? "paper.pdf" : "note\($0).md", isDirectory: false)
     })

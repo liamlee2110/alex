@@ -14,10 +14,11 @@ final class Thumbnails: ObservableObject {
     private var pending: Set<String> = []
     private var failed: Set<String> = []
 
-    /// A document's first page and how many pages it has.
+    /// A document's first page and how many pages (slides, sheets) it
+    /// has, where that is known.
     struct PagePreview: Hashable {
         let image: NSImage
-        let pages: Int
+        let count: Int?
     }
 
     func image(for url: URL, size: CGSize) -> NSImage? {
@@ -42,7 +43,9 @@ final class Thumbnails: ObservableObject {
     /// first, which is right for a folder's peek and far too coarse for a
     /// card that shows the page itself. `width` is in points; the render is
     /// in pixels, rounded to a step so a pinch does not redraw every frame
-    /// and capped so a zoomed-in page cannot cost tens of megabytes.
+    /// and capped so a zoomed-in page cannot cost tens of megabytes. An
+    /// office file's first page comes from QuickLook, asked for at that
+    /// width (revision 61), since nothing else on the Mac lays one out.
     func page(for url: URL, width: CGFloat) -> PagePreview? {
         let step: CGFloat = 320
         let pixels = width * (NSScreen.main?.backingScaleFactor ?? 2)
@@ -51,8 +54,11 @@ final class Thumbnails: ObservableObject {
         if let ready = pages[key] { return ready }
         guard !pending.contains(key), !failed.contains(key) else { return nil }
         pending.insert(key)
+        let office = OfficeDocument.Shape.forExtension(url.pathExtension) != nil
         Task.detached(priority: .userInitiated) {
-            let rendered = Self.renderFirstPage(of: url, width: bucket)
+            let rendered = office
+                ? await Self.lookFirstPage(of: url, width: bucket)
+                : Self.renderFirstPage(of: url, width: bucket)
             await MainActor.run {
                 self.pending.remove(key)
                 if let rendered { self.pages[key] = rendered } else { self.failed.insert(key) }
@@ -67,7 +73,22 @@ final class Thumbnails: ObservableObject {
         guard bounds.width > 1, bounds.height > 1 else { return nil }
         let size = CGSize(width: width, height: (width * bounds.height / bounds.width).rounded())
         return PagePreview(image: first.thumbnail(of: size, for: .mediaBox),
-                           pages: max(document.pageCount, 1))
+                           count: max(document.pageCount, 1))
+    }
+
+    /// QuickLook's first page or slide at `width` pixels. The box is twice
+    /// as tall as it is wide so a portrait page and a landscape slide both
+    /// come back as wide as asked; the count is read from the zip.
+    private nonisolated static func lookFirstPage(of url: URL, width: CGFloat) async -> PagePreview? {
+        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: width, height: width * 2),
+                                                   scale: 1, representationTypes: .thumbnail)
+        let image: NSImage? = await withCheckedContinuation { done in
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { rep, _ in
+                done.resume(returning: rep?.nsImage)
+            }
+        }
+        guard let image, image.size.width > 1, image.size.height > 1 else { return nil }
+        return PagePreview(image: image, count: OfficeDocument.length(of: url))
     }
 
     static func key(_ url: URL) -> String {

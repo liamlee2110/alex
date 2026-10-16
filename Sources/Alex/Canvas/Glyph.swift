@@ -51,6 +51,8 @@ enum Glyph: String, CaseIterable, Sendable {
     case folder
     case file
     case fileText = "file-text"
+    case presentation
+    case sheet
     case fileType = "file-type"
     case bookOpenText = "book-open-text"
     case image

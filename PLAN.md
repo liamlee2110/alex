@@ -1202,6 +1202,23 @@ cards still stand off it by their hairline and their one shadow;
 sketch now draws its own card and shadow, the style panel's
 (`Elevation.raised`), in place of the window's, so the two read as one
 set of chrome, and the style panel's window ends at the sketch's edge.
+Revision 61 (2026-10-16, asked by Liam, for the launch film's desk): a
+Word, PowerPoint or Excel file, and Pages, Keynote and Numbers, is a
+document card like a PDF's (revision 6) instead of a titled card — the
+first page or slide drawn by QuickLook at the card's width, on the same
+grey, with the name and the length under it. QuickLook, because nothing
+else on the Mac lays out an Office file and it is the system's own
+renderer (D3: no dependency); the box asked for is twice as tall as it is
+wide, so a page and a slide both come back at the card's width, in the
+PDF card's resolution steps. A deck's card is slide-shaped (320 × 220: a
+16 : 9 slide inside the page card's margins, and the name row); a page or
+a sheet keeps the page card. The length is said only where it is cheap
+and true: a deck's slides and a workbook's sheets are counted from the
+names in the zip's table of contents; a Word file's pages from the
+`<Pages>` Word writes into `docProps/app.xml` when it saves, believed
+only beside a nonzero `<Words>`, since a file made by a script carries
+its template's `1`; iWork files say nothing. The panel still offers
+"Open with the default app" for these: a reader there is a later change.
 
 ## 0. One paragraph
 
@@ -1417,6 +1434,7 @@ Node kinds and how each renders:
 | `file` → `.py .json .csv ...` | Mono card, first lines | Mono text, read-only in v1 |
 | `file` → `.html` | QuickLook thumbnail | `WKWebView` with read access limited to the vault, no script bridge |
 | `file` → `.pdf` | Page-shaped card: the first page at the card's width, the name and the page count under it | `PDFView` |
+| `file` → `.docx .pptx .xlsx .pages .key .numbers` | The PDF's card, the first page or slide drawn by QuickLook; a deck's card slide-shaped; the slide, page or sheet count where the zip says it cheaply (revision 61) | "Open with the default app" |
 | `text` | Sticky note, or bare words (`x-shape: text`), inline edit | — (written on the desk) |
 | `link` | Poster card: the page's picture and title, or a post's text, from oEmbed or Open Graph | The video, post or page embedded live; a click-through opens the browser |
 | `group` | Labelled region, tinted, the "Foundation / GPT / Interviews" bands | — |

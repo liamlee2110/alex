@@ -10,6 +10,9 @@ enum Placement {
     /// landscape card is a paper nobody can read. Letter and A4 are both
     /// near 1 : 1.3.
     static let documentSize = CGSize(width: 320, height: 414)
+    /// A deck's card (revision 61): a 16 : 9 slide across the page card's
+    /// inset width, the same paper above and below it, and the name row.
+    static let slideSize = CGSize(width: 320, height: 220)
     static let textSize = CGSize(width: 240, height: 160)
     /// A folded card: one title row, the height written into the file so
     /// another JSON Canvas app draws the same short card.
@@ -19,10 +22,11 @@ enum Placement {
     static let cardGap = CGSize(width: 40, height: 40)
 
     /// The card a file gets when nobody has sized it: a document's page
-    /// shape, a card otherwise.
+    /// shape, a deck's slide shape, a card otherwise.
     static func size(for entry: VaultEntry) -> CGSize {
         switch entry.kind {
         case .pdf: return documentSize
+        case .office: return entry.officeShape == .slides ? slideSize : documentSize
         default: return cardSize
         }
     }

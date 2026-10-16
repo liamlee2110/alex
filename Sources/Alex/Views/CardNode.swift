@@ -176,7 +176,9 @@ struct CardNodeView: View {
     @ViewBuilder
     private var content: some View {
         switch kind {
-        case .pdf:
+        case .pdf, .office:
+            // An office file is a PDF's card with QuickLook's page in it
+            // (revision 61): the film's slide deck and report, as drawn.
             DocumentBody(url: url, name: VaultPath.name(of: path),
                          screenWidth: node.width * zoom, missing: missing)
         case .image, .html:
@@ -382,6 +384,8 @@ struct DocumentBody: View {
 
     @ObservedObject private var thumbnails = Thumbnails.shared
 
+    private var entry: VaultEntry { VaultEntry(path: name, isDirectory: false) }
+
     var body: some View {
         let preview = url.flatMap { thumbnails.page(for: $0, width: screenWidth) }
         VStack(spacing: 0) {
@@ -390,7 +394,7 @@ struct DocumentBody: View {
                 if let preview {
                     page(preview.image)
                 } else {
-                    GlyphImage(VaultEntry.Kind.pdf.symbol, size: Icon.hero)
+                    GlyphImage(entry.symbol, size: Icon.hero)
                         .foregroundStyle(Ink.faint)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -431,8 +435,8 @@ struct DocumentBody: View {
 
     private func caption(_ preview: Thumbnails.PagePreview?) -> String {
         if missing { return "Missing file" }
-        guard let preview else { return "" }
-        return preview.pages == 1 ? "1 page" : "\(preview.pages) pages"
+        guard let count = preview?.count else { return "" }
+        return (entry.officeShape ?? .pages).caption(count)
     }
 }
 

@@ -57,6 +57,79 @@ check(VaultEntry.Kind.forExtension("xyz") == .other, "unknown is other")
 check(VaultEntry(path: "a/b", isDirectory: true).kind == .directory, "directories are directories")
 check(VaultEntry(path: "notes/Plan.md", isDirectory: false).name == "Plan.md", "name from path")
 
+print("\n— Office documents (revision 61) —")
+for ext in ["docx", "PPTX", "xlsx", "pages", "key", "numbers"] {
+    check(VaultEntry.Kind.forExtension(ext) == .office, "\(ext) is an office file")
+}
+check(!VaultEntry.Kind.office.isTextual, "an office file is not shown as text")
+check(VaultEntry(path: "Deck.key", isDirectory: false).officeShape == .slides, "a Keynote deck is slides")
+check(VaultEntry(path: "Plan.numbers", isDirectory: false).officeShape == .sheets, "a Numbers file is sheets")
+check(VaultEntry(path: "Report.pages", isDirectory: false).officeShape == .pages, "a Pages file is pages")
+check(VaultEntry(path: "deck.pptx", isDirectory: true).officeShape == nil, "a folder named like a deck is a folder")
+check(VaultEntry(path: "deck.pptx", isDirectory: false).symbol == .presentation, "a deck's icon is a slide")
+check(VaultEntry(path: "costs.xlsx", isDirectory: false).symbol == .sheet, "a workbook's icon is a sheet")
+check(VaultEntry(path: "a.md", isDirectory: false).symbol == VaultEntry.Kind.markdown.symbol, "other kinds keep their icon")
+check(OfficeDocument.Shape.slides.caption(1) == "1 slide" && OfficeDocument.Shape.pages.caption(12) == "12 pages"
+      && OfficeDocument.Shape.sheets.caption(3) == "3 sheets", "captions say the unit, singular for one")
+check(OfficeDocument.isPart("ppt/slides/slide12.xml", "ppt/slides/slide"), "a slide part counts")
+check(!OfficeDocument.isPart("ppt/slides/_rels/slide1.xml.rels", "ppt/slides/slide"), "its relations do not")
+check(!OfficeDocument.isPart("ppt/slides/slide.xml", "ppt/slides/slide"), "a part with no number does not")
+check(OfficeDocument.wordPages(appXML: "<Properties><Pages>7</Pages><Words>1840</Words></Properties>") == 7,
+      "Word's saved page count is read")
+check(OfficeDocument.wordPages(appXML: "<Properties><Pages>1</Pages><Words>0</Words></Properties>") == nil,
+      "a script's template count, with no words counted, is not believed")
+check(OfficeDocument.wordPages(appXML: "<Properties><Words>12</Words></Properties>") == nil, "no Pages, no count")
+
+// Real zips, made by the system's zip: stored and deflated parts, and the
+// slides counted from the table of contents alone.
+func zipUp(_ folder: URL, to file: URL, store: Bool) {
+    let zip = Process()
+    zip.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+    zip.currentDirectoryURL = folder
+    zip.arguments = (store ? ["-q", "-0", "-r"] : ["-q", "-9", "-r"]) + [file.path, "."]
+    try? zip.run()
+    zip.waitUntilExit()
+}
+func officeFixture(_ name: String, parts: [String: String], store: Bool = false) -> URL {
+    let folder = scratch.appendingPathComponent("parts-\(UUID().uuidString)")
+    for (path, text) in parts {
+        let url = folder.appendingPathComponent(path)
+        try! fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try! text.write(to: url, atomically: true, encoding: .utf8)
+    }
+    let file = scratch.appendingPathComponent(name)
+    zipUp(folder, to: file, store: store)
+    return file
+}
+let deck = officeFixture("Lecture.pptx", parts: [
+    "[Content_Types].xml": "<Types/>",
+    "ppt/presentation.xml": "<p/>",
+    "ppt/slides/slide1.xml": "<s/>", "ppt/slides/slide2.xml": "<s/>", "ppt/slides/slide3.xml": "<s/>",
+    "ppt/slides/_rels/slide1.xml.rels": "<r/>",
+    "ppt/slideLayouts/slideLayout1.xml": "<l/>",
+    "docProps/app.xml": "<Properties><Slides>0</Slides></Properties>",
+])
+check(OfficeDocument.length(of: deck) == 3, "a deck's slides are counted from its parts, not its stale app.xml",
+      "got \(String(describing: OfficeDocument.length(of: deck)))")
+let filler = String(repeating: "<TitlesOfParts>Heading</TitlesOfParts>", count: 200)
+let wordApp = "<Properties>\(filler)<Pages>14</Pages><Words>5120</Words></Properties>"
+let report = officeFixture("Report.docx", parts: ["word/document.xml": "<w/>", "docProps/app.xml": wordApp])
+check(OfficeDocument.length(of: report) == 14, "a Word file's pages are inflated out of app.xml",
+      "got \(String(describing: OfficeDocument.length(of: report)))")
+let storedReport = officeFixture("Stored.docx", parts: ["docProps/app.xml": wordApp], store: true)
+check(OfficeDocument.length(of: storedReport) == 14, "and read from a stored part too")
+check(OfficeDocument.Zip(try! Data(contentsOf: report))?.contents(of: "docProps/app.xml")
+        .flatMap { String(data: $0, encoding: .utf8) } == wordApp, "an inflated part is the bytes written")
+let book = officeFixture("Costs.xlsx", parts: [
+    "xl/workbook.xml": "<w/>", "xl/worksheets/sheet1.xml": "<s/>", "xl/worksheets/sheet2.xml": "<s/>",
+])
+check(OfficeDocument.length(of: book) == 2, "a workbook's sheets are counted")
+let notZip = scratch.appendingPathComponent("Broken.pptx")
+try! "not a zip at all".write(to: notZip, atomically: true, encoding: .utf8)
+check(OfficeDocument.length(of: notZip) == nil, "a file that is not a zip has no count, and no crash")
+let keynote = officeFixture("Talk.key", parts: ["Index/Slide.iwa": "x"])
+check(OfficeDocument.length(of: keynote) == nil, "a Keynote file has no count")
+
 print("\n— VaultListing —")
 for name in ["zeta.md", "Alpha.md", ".hidden", "beta.png"] {
     fm.createFile(atPath: vault.appendingPathComponent(name).path, contents: Data())

@@ -3,7 +3,7 @@ import Foundation
 /// One thing in the vault, named by its relative path. Pure Foundation.
 struct VaultEntry: Identifiable, Hashable {
     enum Kind: String {
-        case directory, markdown, canvas, image, pdf, html, code, text, other
+        case directory, markdown, canvas, image, pdf, office, html, code, text, other
 
         static func forExtension(_ ext: String) -> Kind {
             switch ext.lowercased() {
@@ -11,6 +11,7 @@ struct VaultEntry: Identifiable, Hashable {
             case "canvas": return .canvas
             case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg", "tiff", "bmp": return .image
             case "pdf": return .pdf
+            case "docx", "pptx", "xlsx", "pages", "key", "numbers": return .office
             case "html", "htm": return .html
             case "py", "swift", "js", "ts", "json", "yaml", "yml", "toml", "sh",
                  "c", "cpp", "h", "rs", "jl", "ino", "m": return .code
@@ -27,6 +28,7 @@ struct VaultEntry: Identifiable, Hashable {
             case .canvas: return .layoutDashboard
             case .image: return .image
             case .pdf: return .bookOpenText
+            case .office: return .fileText
             case .html: return .globe
             case .code: return .codeXml
             case .text: return .fileType
@@ -38,7 +40,7 @@ struct VaultEntry: Identifiable, Hashable {
         var isTextual: Bool {
             switch self {
             case .markdown, .canvas, .html, .code, .text: return true
-            case .directory, .image, .pdf, .other: return false
+            case .directory, .image, .pdf, .office, .other: return false
             }
         }
     }
@@ -51,6 +53,12 @@ struct VaultEntry: Identifiable, Hashable {
     var kind: Kind {
         isDirectory ? .directory : Kind.forExtension((path as NSString).pathExtension)
     }
+    /// An office file's shape: pages, slides or sheets (revision 61).
+    var officeShape: OfficeDocument.Shape? {
+        isDirectory ? nil : OfficeDocument.Shape.forExtension((path as NSString).pathExtension)
+    }
+    /// The kind's icon, a deck's or a workbook's where the kind is office.
+    var symbol: Glyph { officeShape?.symbol ?? kind.symbol }
 }
 
 enum VaultListing {

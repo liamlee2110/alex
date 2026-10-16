@@ -165,7 +165,7 @@ struct FindPanel: View {
     private func symbol(of node: CanvasNode) -> Glyph {
         switch node.kind {
         case .file:
-            return VaultEntry(path: node.file ?? "", isDirectory: false).kind.symbol
+            return VaultEntry(path: node.file ?? "", isDirectory: false).symbol
         case .text:
             return node.shape != nil ? ShapeLabel.symbol(of: node) : .stickyNote
         case .group:
