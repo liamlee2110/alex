@@ -13,6 +13,10 @@ struct CanvasView: View {
     var bare = false
     /// Esc with nothing to put down: the quick sketch puts itself away.
     var onIdleEscape: (() -> Void)? = nil
+    /// Given, the style panel is not drawn on the desk: whether it would
+    /// be is said here, and the quick sketch floats it outside, at the
+    /// window's left (revision 59).
+    var onStylePanel: ((Bool) -> Void)? = nil
     @EnvironmentObject private var vault: Vault
     @Environment(\.undoManager) private var undoManager
     @FocusState private var focused: Bool
@@ -184,7 +188,7 @@ struct CanvasView: View {
                 // row, clear of its card, while something is selected and
                 // at rest.
                 ZStack(alignment: .topLeading) {
-                    if stylePanelShown {
+                    if stylePanelShown, onStylePanel == nil {
                         StylePanel(store: store)
                             .padding(.leading, insets.leading + Shell.gutter)
                             // No head row over the quick sketch's desk.
@@ -220,6 +224,7 @@ struct CanvasView: View {
                 if side != hoveredSide { withAnimation(Motion.quick) { hoveredSide = side } }
             }
             .onChange(of: store.selection) { _, _ in hoveredSide = nil }
+            .onChange(of: stylePanelShown, initial: true) { _, shown in onStylePanel?(shown) }
             .coordinateSpace(name: "desk")
             .clipped()
             .focusable()

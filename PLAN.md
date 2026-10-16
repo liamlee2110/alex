@@ -1155,8 +1155,10 @@ Settings picks another, brings a floating window over whatever is in
 front, on every Space and over full-screen apps, at the foot of the
 screen the pointer is on, in the middle, a gutter above the Dock, at the
 size it was last given: a desk with the least on it. No sidebar, no zoom
-bar, no sheet; the style panel at its top left, as on the window's desk,
-while something is selected; and the palette folded into one small
+bar, no sheet; the style panel outside it, floating
+a gutter clear of its left edge, level with the desk's top, while
+something is selected — a child window, so it moves with the sketch,
+and inside the desk's left only when the screen has no room there; and the palette folded into one small
 muted glyph in the bottom right corner, no pill and no blue, wearing
 the tool in hand, its menu every tool
 with its key, then New note and Add a link (`ToolCorner`), so the room

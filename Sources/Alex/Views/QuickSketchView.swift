@@ -10,6 +10,7 @@ struct QuickSketchView: View {
     @EnvironmentObject private var vault: Vault
     let onClose: () -> Void
     let onOpenInWindow: (String) -> Void
+    var onStylePanel: ((Bool) -> Void)? = nil
     @State private var tabWidth = Shell.sketchTabMin
 
     var body: some View {
@@ -29,7 +30,7 @@ struct QuickSketchView: View {
         if vault.root == nil {
             notice("Open a workspace in Alex to sketch in it.")
         } else if store.isOpen {
-            CanvasView(store: store, bare: true, onIdleEscape: onClose)
+            CanvasView(store: store, bare: true, onIdleEscape: onClose, onStylePanel: onStylePanel)
                 .environmentObject(store)
         } else {
             if let trouble = store.trouble {
@@ -141,5 +142,22 @@ struct SketchOutline: Shape {
         path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: edge), radius: corner)
         path.closeSubpath()
         return path
+    }
+}
+
+/// The quick sketch's style panel in its own window (revision 59): the
+/// panel with room round it for its card's shadow, telling its size so
+/// the window can follow it.
+struct FloatingStylePanel: View {
+    @ObservedObject var store: CanvasStore
+    let onSize: (CGSize) -> Void
+
+    static let margin = Space.xl
+
+    var body: some View {
+        StylePanel(store: store)
+            .fixedSize()
+            .padding(Self.margin)
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { onSize($0) }
     }
 }

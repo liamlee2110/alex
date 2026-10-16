@@ -131,6 +131,10 @@ final class QuickSketch: NSObject, NSWindowDelegate {
     /// The windows put away while the sketch is up: activating Alex
     /// would bring them over the app that was in front (revision 59).
     private var stowed: [NSWindow] = []
+    /// The style panel, floating outside the sketch at its left while
+    /// something is selected: a child window, so it moves with it.
+    private var styleWindow: NSPanel?
+    private var styleShown = false
 
     var isShown: Bool { panel?.isVisible == true }
 
@@ -168,6 +172,7 @@ final class QuickSketch: NSObject, NSWindowDelegate {
     func hide() {
         guard let panel, panel.isVisible else { return }
         PopupMenu.shared.close()
+        setStylePanel(false)
         panel.orderOut(nil)
         if let previous, !previous.isTerminated { previous.activate() }
         // Back where they were, behind the app given back the Mac.
@@ -199,7 +204,8 @@ final class QuickSketch: NSObject, NSWindowDelegate {
                                    onOpenInWindow: { [weak self, weak model] path in
                                        self?.hide()
                                        model?.openInWindow(path)
-                                   })
+                                   },
+                                   onStylePanel: { [weak self] shown in self?.setStylePanel(shown) })
             .environmentObject(model.vault)
         let hosting = NSHostingView(rootView: root)
         hosting.sizingOptions = []
@@ -223,9 +229,89 @@ final class QuickSketch: NSObject, NSWindowDelegate {
                               width: size.width, height: size.height), display: true)
     }
 
-    func windowDidResize(_ notification: Notification) { panel?.invalidateShadow() }
+    func windowDidResize(_ notification: Notification) {
+        panel?.invalidateShadow()
+        placeStylePanel()
+    }
+
+    func windowDidMove(_ notification: Notification) { placeStylePanel() }
+
+    // MARK: - The style panel, outside
+
+    private func setStylePanel(_ shown: Bool) {
+        styleShown = shown
+        guard let panel, let model else { return }
+        guard shown, panel.isVisible else {
+            styleWindow?.orderOut(nil)
+            return
+        }
+        let style = styleWindow ?? makeStyleWindow(store: model.sketch)
+        style.appearance = panel.effectiveAppearance
+        if style.parent !== panel { panel.addChildWindow(style, ordered: .above) }
+        placeStylePanel()
+        style.orderFront(nil)
+    }
+
+    private func makeStyleWindow(store: CanvasStore) -> NSPanel {
+        let style = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: true)
+        style.isOpaque = false
+        style.backgroundColor = .clear
+        // The shadow is the card's own `Elevation`, not the window's.
+        style.hasShadow = false
+        style.isReleasedWhenClosed = false
+        style.hidesOnDeactivate = false
+        style.animationBehavior = .none
+        style.level = .floating
+        style.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        let hosting = NSHostingView(rootView: FloatingStylePanel(store: store) { [weak self] _ in
+            DispatchQueue.main.async { self?.placeStylePanel() }
+        })
+        style.contentView = hosting
+        styleWindow = style
+        return style
+    }
+
+    /// Its top level with the desk's, a gutter clear of the sketch's left
+    /// edge; inside the desk's left when the screen has no room there.
+    private func placeStylePanel() {
+        guard styleShown, let panel, let style = styleWindow, let hosting = style.contentView else { return }
+        let size = hosting.fittingSize
+        let m = FloatingStylePanel.margin
+        let top = panel.frame.maxY - Shell.sketchTab + m
+        var x = panel.frame.minX - Shell.gutter - size.width + m
+        if let visible = panel.screen?.visibleFrame, x + m < visible.minX {
+            x = panel.frame.minX + Shell.gutter - m
+        }
+        style.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
+    }
 
     /// `--sketch on`: the sketch up at launch, its picture taken with the
     /// snapshot (a window of its own).
     var snapshotWindow: NSWindow? { isShown ? panel : nil }
+
+    /// The sketch and its floating style panel in one picture, for a
+    /// snapshot: the panel stands outside the sketch's frame.
+    func snapshot() -> NSBitmapImageRep? {
+        guard let panel, isShown else { return nil }
+        let windows = [panel] + [styleWindow].compactMap { $0 }.filter(\.isVisible)
+        let bounds = windows.map(\.frame).reduce(panel.frame) { $0.union($1) }
+        let scale = panel.backingScaleFactor
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * scale),
+                                         pixelsHigh: Int(bounds.height * scale), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = bounds.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        for window in windows {
+            guard let view = window.contentView,
+                  let part = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: part)
+            part.draw(in: NSRect(x: window.frame.minX - bounds.minX, y: window.frame.minY - bounds.minY,
+                                 width: window.frame.width, height: window.frame.height))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
+    }
 }

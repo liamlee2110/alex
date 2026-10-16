@@ -40,7 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // `--sketch on`: the quick sketch up at launch, for a snapshot.
         if Launch.value(after: "--sketch") == "on" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { QuickSketch.shared.show() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                QuickSketch.shared.show()
+                // With `--select-all on`, the sketch's nodes too, so its
+                // floating style panel is in the picture.
+                if Launch.value(after: "--select-all") == "on" { QuickSketch.shared.model?.sketch.selectAll() }
+            }
         }
         if let path = Snapshot.requestedPath(CommandLine.arguments) {
             let delay = Launch.value(after: "--snapshot-delay").flatMap(Double.init) ?? 2.0
@@ -65,6 +70,13 @@ enum Snapshot {
 
     @MainActor
     static func write(to path: String) {
+        // The quick sketch and its style panel, which floats outside it.
+        if PopupMenu.forced == nil, let rep = QuickSketch.shared.snapshot() {
+            if let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: path))
+            }
+            return
+        }
         // The frame view, not the content view: the title bar strip is part
         // of the picture now that the wood runs under it. Settings is a sheet
         // in this window (revision 41), so `--settings on` is in the picture.
