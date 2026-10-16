@@ -9,6 +9,8 @@ final class AppModel: ObservableObject {
 
     let vault: Vault
     let canvas: CanvasStore
+    /// The quick sketch's desk (revision 59), on the same vault.
+    let sketch: CanvasStore
     let rpc: McpRpc
     let door: McpServer
 
@@ -17,6 +19,7 @@ final class AppModel: ObservableObject {
     init(arguments: [String] = CommandLine.arguments) {
         vault = Vault(arguments: arguments)
         canvas = CanvasStore(vault: vault)
+        sketch = CanvasStore(vault: vault, role: .sketch)
         rpc = McpRpc(vault: vault, canvas: canvas)
         door = McpServer(rpc: rpc)
         rpc.activate = {
@@ -32,6 +35,15 @@ final class AppModel: ObservableObject {
         door.apply(enabled: enabled)
         door.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &subscriptions)
+    }
+
+    /// The sketch's tab's Open in Alex: that canvas in the window, the
+    /// window in front.
+    func openInWindow(_ path: String) {
+        canvas.openCanvas(at: path)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first { $0.isVisible && $0.contentView != nil && !($0 is NSPanel) }?
+            .makeKeyAndOrderFront(nil)
     }
 
     func setDoor(enabled: Bool) {

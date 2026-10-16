@@ -1640,6 +1640,56 @@ MainActor.assumeIsolated { batchBTests() }
 
 MainActor.assumeIsolated { penTests() }
 
+@MainActor func quickSketchTests() {
+    print("\n— The quick sketch (revision 59) —")
+    var parts = DateComponents()
+    (parts.year, parts.month, parts.day, parts.hour, parts.minute) = (2026, 10, 16, 9, 5)
+    let when = Calendar.current.date(from: parts)!
+    check(CanvasStore.sketchName(when) == "Sketch 2026-10-16 09.05", "a sketch is named by its minute",
+          CanvasStore.sketchName(when))
+    check((try? CanvasStore.validCanvasName(CanvasStore.sketchName(when)).get()) != nil,
+          "and the name is one a canvas may have")
+
+    let root = scratch.appendingPathComponent("sketch")
+    try! fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let defaults = UserDefaults(suiteName: "alex-tests-\(UUID().uuidString)")!
+    let vault = Vault(arguments: [], defaults: defaults)
+    vault.open(root)
+    let window = CanvasStore(vault: vault)
+    let sketch = CanvasStore(vault: vault, role: .sketch)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    window.newCanvas(named: "Plans")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    check(!sketch.isOpen, "the sketch's desk opens nothing of its own accord")
+    sketch.openMostRecent()
+    check(sketch.canvasPath == "Plans.canvas", "the first time, it opens the canvas last changed, not a new one",
+          sketch.canvasPath)
+    let first = sketch.newSketch(now: when)
+    let second = sketch.newSketch(now: when)
+    check(first == "Sketches/Sketch 2026-10-16 09.05.canvas" && second == "Sketches/Sketch 2026-10-16 09.05 2.canvas",
+          "⌘N writes a fresh canvas in Sketches, never over one", "\(first ?? "nil"), \(second ?? "nil")")
+    check(sketch.canvasPath == second && window.canvasPath == "Plans.canvas",
+          "the two desks keep their own canvases")
+    check(window.canvases.contains(second ?? ""), "a sketch is an ordinary canvas the sidebar lists")
+
+    window.openCanvas(at: second!)
+    sketch.viewSize = CGSize(width: 900, height: 600)
+    let sticky = sketch.addSticky(at: CGPoint(x: 10, y: 10))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    check(window.document.nodes.contains { $0.id == sticky.id },
+          "a stroke on the sketch reaches the window showing the same canvas")
+    window.remove([sticky.id])
+    RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    check(!sketch.document.nodes.contains { $0.id == sticky.id }, "and back the other way")
+
+    let reopened = CanvasStore(vault: vault, role: .sketch)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    check(reopened.canvasPath == second, "the sketch reopens the last canvas it showed", reopened.canvasPath)
+    check(sketch.recentlyChangedCanvases(limit: 1) == [second!], "the tab offers the canvas last changed first",
+          "\(sketch.recentlyChangedCanvases(limit: 3))")
+}
+
+MainActor.assumeIsolated { quickSketchTests() }
 
 print("")
 if failures == 0 { print("✓ canvas suite passed") } else { print("✗ \(failures) failure(s)") }

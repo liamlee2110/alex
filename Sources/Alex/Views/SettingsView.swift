@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 /// Settings (revision 41): a card centred over the desk under the ⌘K
 /// scrim, the way Heptabase's, Notion's and Figma's settings open over
@@ -46,6 +47,7 @@ struct SettingsSheet: View {
                 VStack(alignment: .leading, spacing: 0) {
                     workspace
                     ToolKeysSection()
+                    QuickSketchSection()
                     links
                     claudeCode
                 }
@@ -322,5 +324,55 @@ struct SettingsSwitch: View {
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.small)
+    }
+}
+
+/// The quick sketch (revision 59): the key that brings it from anywhere,
+/// and Alex at login, so the key is there from the start.
+private struct QuickSketchSection: View {
+    @ObservedObject private var hotkey = SketchHotkey.shared
+    @State private var key = SketchKey.chosen
+    @State private var atLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginTrouble: String?
+
+    var body: some View {
+        SettingsSection("Quick sketch") {
+            LabeledContent("Key from anywhere") {
+                MenuButton(name: "sketch-key", items: {
+                    for choice in SketchKey.allCases {
+                        MenuItem(choice.title, checked: choice == key, shortcut: choice.shortcut) {
+                            key = choice
+                            UserDefaults.standard.set(choice.rawValue, forKey: SketchKey.defaultsKey)
+                            hotkey.apply(choice)
+                        }
+                    }
+                }) { _ in
+                    HStack(spacing: Space.s) {
+                        if let shortcut = key.shortcut { KeyCaps(shortcut) } else { Text("Off") }
+                        GlyphImage(.chevronDown, size: Icon.mark, weight: .medium)
+                            .foregroundStyle(Ink.muted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Key from anywhere: \(key.title)")
+            }
+            SettingsNote(hotkey.failed
+                ? "Another app holds that key, so it does nothing. Pick another."
+                : "Brings a bare desk over whatever you are doing, on the canvas it last showed. "
+                   + "The same key puts it away. New sketches go in the Sketches folder.")
+            LabeledContent("Open Alex at login") {
+                SettingsSwitch("Open Alex at login", isOn: $atLogin)
+                    .onChange(of: atLogin) { _, on in
+                        do {
+                            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                            loginTrouble = nil
+                        } catch {
+                            loginTrouble = error.localizedDescription
+                        }
+                    }
+            }
+            if let loginTrouble { SettingsNote(loginTrouble) }
+        }
     }
 }

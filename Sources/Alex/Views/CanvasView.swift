@@ -8,6 +8,11 @@ import UniformTypeIdentifiers
 /// into the store, made when the gesture ends, so one drag is one undo.
 struct CanvasView: View {
     @ObservedObject var store: CanvasStore
+    /// The quick sketch's desk (revision 59): no palette, no zoom bar, no
+    /// style panel — the keys do it all.
+    var bare = false
+    /// Esc with nothing to put down: the quick sketch puts itself away.
+    var onIdleEscape: (() -> Void)? = nil
     @EnvironmentObject private var vault: Vault
     @Environment(\.undoManager) private var undoManager
     @FocusState private var focused: Bool
@@ -141,6 +146,7 @@ struct CanvasView: View {
                 // zoom bar or the sidebar's card would meet the palette,
                 // the palette gives way, not the centre.
                 let insets = store.deskInsets
+                if !bare {
                 ZStack(alignment: .bottom) {
                     ZoomControls(store: store, camera: camera)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("desk")).minX } action: { zoomEdge = $0 }
@@ -174,6 +180,7 @@ struct CanvasView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .animation(Motion.quick, value: stylePanelShown)
                 .animation(Motion.move, value: insets)
+                }
                 if let trouble = store.trouble {
                     Text(trouble)
                         .font(Typography.meta)
@@ -220,6 +227,9 @@ struct CanvasView: View {
                 // Writing in a box: Esc puts the pen down and leaves the
                 // box selected, as Excalidraw's does (revision 50).
                 if editingNode != nil { return finishEditing() }
+                if let onIdleEscape, store.selection.isEmpty, store.tool == .select, drawing == nil {
+                    return onIdleEscape()
+                }
                 store.select(nil)
                 store.setTool(.select)
                 drawing = nil
@@ -306,6 +316,9 @@ struct CanvasView: View {
                 if let pending = nudge, pending.ids != carried(selection) { landNudge() }
             }
             .onAppear {
+                // The quick sketch takes keys the moment it is up: there is
+                // nothing to click first (revision 59).
+                if bare { DispatchQueue.main.async { focused = true } }
                 store.undoManager = undoManager
                 store.viewSize = size
                 if store.wantsFit {

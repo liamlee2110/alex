@@ -196,6 +196,15 @@ enum Shell {
     static let deskMin: CGFloat = 320
     /// The strip either side of a divider that takes the resize pointer.
     static let handle: CGFloat = 9
+    /// The quick sketch (revision 59): the desk it opens at and the least
+    /// it is dragged to, and the tab that rises out of its top edge, its
+    /// corners the card's and the curve where it meets the edge too.
+    static let sketch = CGSize(width: 960, height: 640)
+    static let sketchMin = CGSize(width: 480, height: 320)
+    static let sketchTab: CGFloat = 34
+    static let sketchTabMin: CGFloat = 160
+    static let sketchTabMax: CGFloat = 320
+    static let sketchTabCorner: CGFloat = Radius.card
 }
 
 /// The desk's dot grid: a lattice in world units, drawn in screen space,

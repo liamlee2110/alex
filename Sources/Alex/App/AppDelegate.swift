@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        // `--sketch on`: the quick sketch up at launch, for a snapshot.
+        if Launch.value(after: "--sketch") == "on" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { QuickSketch.shared.show() }
+        }
         if let path = Snapshot.requestedPath(CommandLine.arguments) {
             let delay = Launch.value(after: "--snapshot-delay").flatMap(Double.init) ?? 2.0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -47,8 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// While the quick sketch's key is on, Alex stays to answer it
+    /// (revision 59); the Dock's icon brings a window back.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        MainActor.assumeIsolated { !SketchHotkey.shared.isOn }
     }
 }
 
@@ -62,7 +68,9 @@ enum Snapshot {
         // The frame view, not the content view: the title bar strip is part
         // of the picture now that the wood runs under it. Settings is a sheet
         // in this window (revision 41), so `--settings on` is in the picture.
-        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && !($0 is NSPanel) }),
+        // The quick sketch, when it is up, is the picture (revision 59).
+        guard let window = QuickSketch.shared.snapshotWindow
+                ?? NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && !($0 is NSPanel) }),
               let view = window.contentView?.superview ?? window.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             let seen = NSApp.windows.map {

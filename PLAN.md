@@ -1149,6 +1149,38 @@ shown as it will land, in ink at the regular width.
 - Not taken: Excalidraw's pressure (a pointer has none; its simulated
   taper is a renderer of its own) and opacity, declined in revision 56.
 
+Revision 59 (2026-10-16, asked by Liam, after ChatGPT's popover): a
+quick sketch from anywhere. A key held by the whole Mac, ⌃⇧Space unless
+Settings picks another, brings a floating window over whatever is in
+front, on every Space and over full-screen apps: a desk and nothing
+else. No sidebar, no palette, no zoom bar, no style panel, no sheet —
+the person knows the keys (revision 40's tool keys, ⌘Z, ⌘= and ⌘-, ⌘D,
+⇧2). It reopens the last canvas it showed, and the first time the
+canvas last changed — it never makes one on its own, unless the vault
+has none; ⌘N in it starts a fresh one,
+`Sketches/Sketch <date> <time>.canvas`, an ordinary canvas the sidebar
+lists like any other (D5 says why that is the person's). Above the
+desk, not on it, a tab rises out of the window's top edge, centred, the
+shape of a folder's tab: a close glyph, then the canvas's icon and
+name and a chevron, its `PopupMenu` the new one and the canvases last
+changed, newest first.
+The tab's blank moves the window; its edges resize it, and the frame is
+remembered. Esc with nothing to put down, or the key again, puts the
+window away and gives the Mac back to the app that was in front; there
+is nothing to save (D2). Called from another app, only the sketch comes
+forward: Alex's own window is put away while it is up and put back
+behind that app after, since activating Alex would raise it, its
+sidebar and palette with it, over what the person was doing. The key is Carbon's `RegisterEventHotKey`,
+which needs no Accessibility permission (Donna's `Hotkey`); ⌥⌘Space is
+Finder's search and ⌃⌥Space the input sources, so neither is offered,
+and ⌥⇧Space is Donna's. A key that does not register says so in
+Settings. While the key is on, closing the main window no longer quits
+Alex, so the key keeps working; Settings can also open Alex at login
+(`SMAppService`, off until asked). Two stores may show one canvas — the
+window's and the sketch's — so a write of either reaches the other
+through the vault (`Vault.wrote`), not only the watcher,
+which hides our own writes.
+
 ## 0. One paragraph
 
 A native macOS app that shows a folder of plain files (a *vault*) as a
@@ -1237,7 +1269,11 @@ door — and ⌘K finds every file, placed or not. A group is a group: a
 section never moves a file on disk. A canvas's name is its file's name,
 and renaming it renames the file; its icon and colour are `x-icon` and
 `x-color` at the file's top level (D4's `x-` keys). Any `.canvas` file
-opens. *Considered:* Home, `<vaultname>.canvas` at the root, laying out
+opens. The quick sketch's ⌘N (revision 59) is the person making a
+canvas, named by the time it was made rather than asked for, because
+the point of the key is to draw before thinking of a name; it goes in
+`Sketches/` so the time-named ones keep together, and it is renamed
+like any other. *Considered:* Home, `<vaultname>.canvas` at the root, laying out
 the whole vault with each directory a section whose drag moved files
 (revisions 20–53): it made a canvas nobody asked for, filled it with
 files the person had not chosen, and named it after the workspace, so

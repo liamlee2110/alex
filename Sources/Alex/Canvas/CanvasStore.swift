@@ -9,6 +9,11 @@ import CoreGraphics
 @MainActor
 final class CanvasStore: ObservableObject {
     let vault: Vault
+    /// Which desk this store is behind (revision 59): the window's, or the
+    /// quick sketch's floating one. They remember their open canvas apart,
+    /// and the sketch's opens nothing of its own accord.
+    enum Role { case window, sketch }
+    let role: Role
 
     @Published private(set) var directory = ""
     @Published private(set) var canvasPath = ""
@@ -164,12 +169,19 @@ final class CanvasStore: ObservableObject {
     private var openedRoot: URL?
     private var subscriptions: Set<AnyCancellable> = []
 
-    init(vault: Vault) {
+    init(vault: Vault, role: Role = .window) {
         self.vault = vault
+        self.role = role
         camera.moved = { [weak self] old, new in self?.cameraMoved(from: old, to: new) }
         vault.$root
             .sink { [weak self] root in
                 Task { @MainActor in self?.vaultChanged(root) }
+            }
+            .store(in: &subscriptions)
+        // The other store's writes (revision 59): the watcher hides them.
+        vault.wrote
+            .sink { [weak self] path in
+                Task { @MainActor in self?.siblingWrote(path) }
             }
             .store(in: &subscriptions)
         vault.$generation
@@ -199,7 +211,9 @@ final class CanvasStore: ObservableObject {
         (VaultPath.name(of: path) as NSString).deletingPathExtension
     }
 
-    private var openCanvasKey: String { "openCanvas:" + (vault.root?.path ?? "") }
+    private var openCanvasKey: String {
+        (role == .sketch ? "sketchCanvas:" : "openCanvas:") + (vault.root?.path ?? "")
+    }
 
     private func vaultChanged(_ root: URL?) {
         guard root != openedRoot else { return }
@@ -217,7 +231,7 @@ final class CanvasStore: ObservableObject {
         let remembered = UserDefaults.standard.string(forKey: openCanvasKey) ?? ""
         if remembered.hasSuffix(".canvas"), vault.exists(remembered) {
             openCanvas(at: remembered)
-        } else if let first = canvases.first {
+        } else if role == .window, let first = canvases.first {
             openCanvas(at: first)
         } else {
             closeCanvas()
@@ -327,12 +341,75 @@ final class CanvasStore: ObservableObject {
         // The open canvas went (renamed or removed outside): the first
         // left, else the empty desk.
         if isOpen, !vault.exists(canvasPath) {
-            if let first = canvases.first { openCanvas(at: first) } else { closeCanvas() }
+            if role == .window, let first = canvases.first { openCanvas(at: first) } else { closeCanvas() }
         }
         looks = [:]
         refreshUnplaced()
         recents = recents.filter { vault.exists($0) }
         objectWillChange.send()
+    }
+
+    /// A write of this process's own landed (revision 59): if it is the
+    /// open canvas and not what this store wrote, the other store wrote
+    /// it, and it is taken from disk as the door's is.
+    private func siblingWrote(_ path: String) {
+        guard isOpen, path == canvasPath, let url = vault.url(for: path),
+              let data = try? Data(contentsOf: url), data != lastWritten,
+              let doc = try? CanvasDocument.decode(data) else { return }
+        document = doc
+        lastWritten = data
+        selection = selection.filter { id in doc.nodes.contains { $0.id == id } }
+        refreshUnplaced()
+    }
+
+    // MARK: - Quick sketches (revision 59)
+
+    static let sketchFolder = "Sketches"
+
+    /// A fresh canvas for the quick sketch's ⌘N, named by the minute it
+    /// was made (D5), in `Sketches/`, written before it is shown (D2).
+    @discardableResult
+    func newSketch(now: Date = Date()) -> String? {
+        guard vault.root != nil else { return nil }
+        let stamp = Self.sketchName(now)
+        var path = "\(Self.sketchFolder)/\(stamp).canvas"
+        var i = 2
+        while vault.exists(path) {
+            path = "\(Self.sketchFolder)/\(stamp) \(i).canvas"
+            i += 1
+        }
+        do {
+            try vault.write(try CanvasDocument().encode(), to: path)
+        } catch {
+            trouble = "Couldn't create \(path): \(error)"
+            return nil
+        }
+        trouble = nil
+        openCanvas(at: path)
+        return path
+    }
+
+    /// What the sketch opens on when it remembers nothing (revision 59):
+    /// the canvas last changed, and a fresh sketch only for a vault with
+    /// no canvas at all.
+    func openMostRecent() {
+        if let latest = recentlyChangedCanvases(limit: 1).first { openCanvas(at: latest) } else { newSketch() }
+    }
+
+    /// "Sketch 2026-10-16 14.32": sorts by time, and holds nothing a
+    /// file name or a canvas name refuses.
+    static func sketchName(_ date: Date) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd HH.mm"
+        return "Sketch " + format.string(from: date)
+    }
+
+    /// The canvases last changed, newest first: what the sketch's tab
+    /// offers to switch to.
+    func recentlyChangedCanvases(limit: Int) -> [String] {
+        let dated = canvases.map { ($0, vault.modificationDate($0) ?? .distantPast) }
+        return dated.sorted { $0.1 > $1.1 }.prefix(limit).map(\.0)
     }
 
     // MARK: - Recents

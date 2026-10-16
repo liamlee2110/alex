@@ -652,7 +652,9 @@ enum SecondaryClick {
     static func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .rightMouseUp]) { event in
-            guard let window = event.window, !(window is NSPanel) else { return event }
+            // A menu's or a tooltip's panel is not asked; the quick
+            // sketch's desk is (revision 59).
+            guard let window = event.window, !(window is NSPanel) || window is SketchPanel else { return event }
             if event.type == .rightMouseDown {
                 lastPoint = window.convertPoint(toScreen: event.locationInWindow)
                 lastWindow = window

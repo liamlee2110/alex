@@ -43,6 +43,11 @@ final class Vault: ObservableObject {
     @Published private(set) var trouble: String?
     /// Bumps on every reload so views that cache file contents re-read.
     @Published private(set) var generation = 0
+    /// Every write of this process's own, by vault path, once it is on
+    /// disk (revision 59). The watcher hides our writes, so a second store
+    /// showing the same canvas — the quick sketch's beside the window's —
+    /// hears of them here.
+    let wrote = PassthroughSubject<String, Never>()
 
     private var watcher: VaultWatcher?
     private var indexCache: (generation: Int, index: VaultIndex)?
@@ -315,6 +320,7 @@ final class Vault: ObservableObject {
         // Our own writes are hidden from the watcher, so a new file has to
         // reach the tree by hand.
         if isNew { reload() }
+        wrote.send(path)
     }
 
     /// A file or folder renamed inside the vault: what a card or section

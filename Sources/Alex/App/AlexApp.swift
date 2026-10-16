@@ -10,7 +10,10 @@ struct AlexApp: App {
         WindowGroup("Alex") {
             MainWindowView(model: model)
                 .environmentObject(model.vault)
-                .onAppear { delegate.canvas = model.canvas }
+                .onAppear {
+                    delegate.canvas = model.canvas
+                    QuickSketch.shared.install(model: model)
+                }
                 .frame(minWidth: 900, minHeight: 560)
         }
         // The title bar is hidden and there is no toolbar: the lights are
