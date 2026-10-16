@@ -120,7 +120,7 @@ final class ChromeView: NSView {
     }
 
     /// `--keys x,y[,clicks]:key,key…`: a click at a point, then key presses sent
-    /// through the window a beat apart — `return`, `escape`, `cmd-return`, `cmd-z`, `cmd-a`, an arrow
+    /// through the window a beat apart — `return`, `escape`, `cmd-return`, `cmd-z`, `cmd-a`, `cmd-v`, an arrow
     /// (`left`, `shift-right`…), `shift-2`,
     /// `tab` or a word typed as it stands — each logged with what the desk
     /// is writing in after it. How Enter on a box was proved (revision 50).
@@ -155,6 +155,23 @@ final class ChromeView: NSView {
                 if press == "cmd-a" {
                     let taken = NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil)
                     FileHandle.standardError.write(Data("keys: cmd-a taken \(taken)\n".utf8))
+                    return
+                }
+                // ⌘V as the Edit menu's Paste item is pressed, with whatever
+                // the pasteboard holds (revision 57: a clip from Excalidraw).
+                if press == "cmd-v" {
+                    let edit = NSApp.mainMenu?.items.first { $0.title == "Edit" }?.submenu
+                    edit?.update()
+                    let i = edit?.items.firstIndex { $0.keyEquivalent == "v" && $0.keyEquivalentModifierMask == .command && $0.isEnabled }
+                    var taken = false
+                    if let i, window.isKeyWindow {
+                        edit?.performActionForItem(at: i)
+                        taken = true
+                    } else {
+                        // Not key: the item goes elsewhere; the window's chain.
+                        taken = window.firstResponder?.tryToPerform(#selector(NSText.paste(_:)), with: nil) ?? false
+                    }
+                    FileHandle.standardError.write(Data("keys: cmd-v taken \(taken)\n".utf8))
                     return
                 }
                 if press == "cmd-z" {

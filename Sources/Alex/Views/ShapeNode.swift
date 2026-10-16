@@ -48,13 +48,15 @@ struct ShapeNodeView: View {
             GeometryReader { geo in
                 let box = CGRect(origin: .zero, size: geo.size)
                 if kind == .line {
-                    let ends = Self.endpoints(node, in: geo.size)
-                    Self.segment(ends.from, ends.to).stroke(stroke, style: style)
+                    let points = Self.points(node.linePoints, in: geo.size)
+                    Self.polyline(points).stroke(stroke, style: style)
+                    // Each head points along the segment it ends.
                     if node.lineToEnd == "arrow" {
-                        Self.arrowhead(at: ends.to, from: ends.from, width: width).fill(stroke)
+                        Self.arrowhead(at: points[points.count - 1], from: points[points.count - 2],
+                                       width: width).fill(stroke)
                     }
                     if node.lineFromEnd == "arrow" {
-                        Self.arrowhead(at: ends.from, from: ends.to, width: width).fill(stroke)
+                        Self.arrowhead(at: points[0], from: points[1], width: width).fill(stroke)
                     }
                 } else if kind != .text {
                     let path = Self.outline(kind, in: box.insetBy(dx: width / 2, dy: width / 2), radius: radius)
@@ -92,9 +94,8 @@ struct ShapeNodeView: View {
         func path(in rect: CGRect) -> Path {
             if whole { return Path(rect) }
             let outline: Path
-            if kind == .line, points.count == 2 {
-                outline = ShapeNodeView.segment(CGPoint(x: points[0].x * rect.width, y: points[0].y * rect.height),
-                                                CGPoint(x: points[1].x * rect.width, y: points[1].y * rect.height))
+            if kind == .line, points.count >= 2 {
+                outline = ShapeNodeView.polyline(ShapeNodeView.points(points, in: rect.size))
             } else {
                 outline = ShapeNodeView.outline(kind, in: rect.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2),
                                                 radius: radius)
@@ -217,16 +218,14 @@ struct ShapeNodeView: View {
         }
     }
 
-    static func endpoints(_ node: CanvasNode, in size: CGSize) -> (from: CGPoint, to: CGPoint) {
-        let p = node.linePoints
-        return (CGPoint(x: p[0].x * size.width, y: p[0].y * size.height),
-                CGPoint(x: p[1].x * size.width, y: p[1].y * size.height))
+    /// A line's points, fractions of its box, in a box of `size`.
+    static func points(_ fractions: [CGPoint], in size: CGSize) -> [CGPoint] {
+        fractions.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
     }
 
-    static func segment(_ a: CGPoint, _ b: CGPoint) -> Path {
+    static func polyline(_ points: [CGPoint]) -> Path {
         var path = Path()
-        path.move(to: a)
-        path.addLine(to: b)
+        path.addLines(points)
         return path
     }
 

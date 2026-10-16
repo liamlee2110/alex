@@ -335,6 +335,12 @@ struct CanvasView: View {
             store.paste(clip)
             return
         }
+        // A clip from Excalidraw is JSON text (revision 57); its own MIME
+        // type stays inside Chromium's private pasteboard blob.
+        if let text = board.string(forType: .string), let scene = ExcalidrawClip(text: text) {
+            store.paste(scene)
+            return
+        }
         // A file copied in Finder also offers its name as text, and a picture
         // copied in a browser its address, so the file and the picture come
         // first.
@@ -549,7 +555,7 @@ struct CanvasView: View {
             let path: Path
             switch store.tool {
             case .draw(.line), .draw(.arrow):
-                path = ShapeNodeView.segment(a, b)
+                path = ShapeNodeView.polyline([a, b])
             case .draw(let tool):
                 path = ShapeNodeView.outline(tool.kind, in: box)
             case .text:

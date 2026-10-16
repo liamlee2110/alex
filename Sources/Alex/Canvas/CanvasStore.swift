@@ -1666,6 +1666,39 @@ final class CanvasStore: ObservableObject {
         return nodes
     }
 
+    /// ⌘V of a clip copied in Excalidraw (revision 57): its pictures
+    /// written beside the canvas as pasted pictures are (D2), then placed
+    /// as a clip from elsewhere is, in the middle of the view, in one undo
+    /// step and selected. Excalidraw's coordinates mean nothing here.
+    @discardableResult
+    func paste(_ scene: ExcalidrawClip, now: Date = Date()) -> [CanvasNode] {
+        guard isOpen else { return [] }
+        let dir = directory
+        var nodes: [CanvasNode] = []
+        for var node in scene.nodes {
+            if let picture = scene.pictures[node.id] {
+                let name = Placement.pastedImageName(at: now, ext: picture.ext) { vault.exists(VaultPath.join(dir, $0)) }
+                let path = VaultPath.join(dir, name)
+                do {
+                    try vault.write(picture.data, to: path)
+                } catch {
+                    trouble = "Couldn't save a pasted picture: \(error)"
+                    continue
+                }
+                node.file = path
+            }
+            nodes.append(node)
+        }
+        let bounds = nodes.reduce(CGRect.null) { $0.union($1.frame) }
+        guard !bounds.isNull else { return [] }
+        let visible = viewport.visibleWorld(in: viewSize)
+        for i in nodes.indices {
+            nodes[i].x += visible.midX - bounds.midX
+            nodes[i].y += visible.midY - bounds.midY
+        }
+        return paste(CanvasClip(nodes: nodes, edges: scene.edges, source: ""))
+    }
+
     /// A picture's bytes written to a new file beside it, atomically.
     private func copyImage(_ path: String) -> String? {
         guard let url = vault.url(for: path), let data = try? Data(contentsOf: url) else { return nil }

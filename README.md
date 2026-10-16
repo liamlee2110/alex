@@ -115,6 +115,10 @@ where things stand. It is generic enough for any folder of notes.
   A paste lands a step down and right, or mid-view on another canvas; a
   picture already there is copied to a file of its own, and a note's card
   is not doubled, since a file has one card on a canvas.
+- Copy in Excalidraw and paste on the desk: its rectangles, ellipses,
+  diamonds, text, arrows (connectors when both ends are pasted too),
+  lines, freehand strokes and pictures become Alex's own, editable, their
+  colours snapped to Alex's four.
 - A card taken off a canvas stays in the vault: ⌘K opens it again, and
   **Place on canvas** or the canvas menu's **Place everything not yet
   placed** brings it back.

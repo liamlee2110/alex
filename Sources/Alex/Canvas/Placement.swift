@@ -43,15 +43,15 @@ enum Placement {
 
     /// The file a pasted picture is written to, as Obsidian names it:
     /// `Pasted image 2026-09-29 14.32.png`, then ` 2`, ` 3` while taken.
-    static func pastedImageName(at date: Date, taken: (String) -> Bool) -> String {
+    static func pastedImageName(at date: Date, ext: String = "png", taken: (String) -> Bool) -> String {
         let format = DateFormatter()
         format.locale = Locale(identifier: "en_US_POSIX")
         format.dateFormat = "yyyy-MM-dd HH.mm"
         let stem = "Pasted image \(format.string(from: date))"
-        var name = "\(stem).png"
+        var name = "\(stem).\(ext)"
         var i = 2
         while taken(name) {
-            name = "\(stem) \(i).png"
+            name = "\(stem) \(i).\(ext)"
             i += 1
         }
         return name

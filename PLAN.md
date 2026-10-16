@@ -1084,6 +1084,50 @@ that a JSON Canvas file can hold under `x-` keys (D4).
 `--select-all on` selects every node a second in, so a snapshot shows
 the panel without a click.
 
+Revision 57 (2026-10-16, asked by Liam): paste from Excalidraw. ⌘C in
+excalidraw.com or its desktop app puts the selection on the pasteboard
+as JSON text, `{"type":"excalidraw/clipboard","elements":[…],"files":{…}}`
+(its own `application/vnd.excalidraw.clipboard+json` stays inside
+Chromium's private pasteboard blob on macOS, so the plain text is what
+Alex reads). ⌘V on the desk took it for a web address and dropped it;
+now, after Alex's own clip and before files, pictures and addresses, it
+becomes Alex's nodes (`ExcalidrawClip` in `Excalidraw.swift`, tested on
+two clips taken from excalidraw.com's own copy):
+- **Shapes**: rectangles, ellipses and diamonds, where they were drawn,
+  a rectangle with no roundness square-cornered (`x-radius` 0). Words
+  bound inside are the shape's own.
+- **Words**: free text is a text box. Excalidraw's sizes 16, 20, 28 and
+  36 are Alex's S, M, L and XL; Virgil and Excalifont are hand-drawn,
+  Cascadia and Comic Shanns code, the rest the system's face; the
+  alignment comes along.
+- **Arrows and lines**: one bound at both ends to pasted elements is a
+  connector, its side taken from the binding's `fixedPoint`, its heads
+  and bound words (the label) kept; any other is a line through every
+  point it has. A line now holds two or more points under `x-points`,
+  drawn as a polyline with each head along its last segment.
+- **Freehand**: a line through its points, thinned to those a point
+  apart.
+- **Pictures**: the clip's `files` carry each picture as a data URL; the
+  bytes are written beside the canvas as `Pasted image <date>.<ext>`
+  (D2) and placed as a picture card. **Frames** are sections, named;
+  **embeds** are link cards.
+- **Style**: a colour snaps by hue to red, yellow, green or blue
+  (orange is yellow, violet and cyan blue, pink red); black, white and
+  greys are none. A filled shape takes its fill's colour, else its
+  stroke's. Stroke widths 1, 2 and 4 and solid, dashed and dotted are
+  the style panel's own.
+- **Placed** as a clip from another canvas: in the middle of the view,
+  one undo step, the selection. Excalidraw's coordinates mean nothing
+  on this desk.
+- Not taken: rotation (Alex's nodes have none), opacity, roughness,
+  fill patterns (hachure and cross-hatch are a plain fill), arrowhead
+  kinds (any head is an arrow), a connector's width, pattern and bends,
+  groups, locks, element links and iframes. Copying the
+  other way, Alex to Excalidraw, is not done.
+`--keys x,y:cmd-v` presses Paste with whatever the pasteboard holds, so
+a snapshot proves a paste; a run whose window is not key misses it, so
+retry.
+
 ## 0. One paragraph
 
 A native macOS app that shows a folder of plain files (a *vault*) as a

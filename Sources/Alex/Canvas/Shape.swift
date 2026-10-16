@@ -410,9 +410,10 @@ extension CanvasNode {
     /// A picture's card or a rectangle: what the Corners group rounds.
     var takesCorners: Bool { isImage || shape == .rectangle }
 
-    /// A line's two ends as fractions of its frame, under `x-points`, so a
-    /// resize stretches the line with its box. Left to right across the
-    /// middle when the key is missing.
+    /// A line's points as fractions of its frame, under `x-points`, so a
+    /// resize stretches the line with its box: its two ends, or more for a
+    /// line that bends or a stroke drawn by hand (revision 57, from
+    /// Excalidraw). Left to right across the middle when the key is missing.
     var linePoints: [CGPoint] {
         get {
             let read = (extra["x-points"]?.array ?? []).compactMap { point -> CGPoint? in
@@ -420,7 +421,7 @@ extension CanvasNode {
                       let x = pair[0].double, let y = pair[1].double else { return nil }
                 return CGPoint(x: x, y: y)
             }
-            return read.count == 2 ? read : [CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5)]
+            return read.count >= 2 ? read : [CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5)]
         }
         set {
             extra["x-points"] = .array(newValue.map { .array([.number($0.x), .number($0.y)]) })
@@ -443,7 +444,7 @@ extension CanvasNode {
     var lineEndpoints: (from: CGPoint, to: CGPoint) {
         let p = linePoints
         return (CGPoint(x: x + p[0].x * width, y: y + p[0].y * height),
-                CGPoint(x: x + p[1].x * width, y: y + p[1].y * height))
+                CGPoint(x: x + p[p.count - 1].x * width, y: y + p[p.count - 1].y * height))
     }
 
     /// A rectangle, ellipse or diamond filling `frame`.
@@ -457,7 +458,16 @@ extension CanvasNode {
     /// `ShapeMetrics.minimumThickness` where it would be thinner, the points kept
     /// where they were as fractions of that box.
     static func line(from a: CGPoint, to b: CGPoint, arrow: Bool, color: String? = nil) -> CanvasNode {
-        var box = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+        var node = line(through: [a, b], color: color)
+        if arrow { node.lineToEnd = "arrow" }
+        return node
+    }
+
+    /// A line through `points`, two or more, boxed as `line(from:to:)` is.
+    static func line(through points: [CGPoint], color: String? = nil) -> CanvasNode {
+        var box = points.dropFirst().reduce(CGRect(origin: points[0], size: .zero)) {
+            $0.union(CGRect(origin: $1, size: .zero))
+        }
         if box.width < ShapeMetrics.minimumThickness {
             box = box.insetBy(dx: -(ShapeMetrics.minimumThickness - box.width) / 2, dy: 0)
         }
@@ -466,9 +476,11 @@ extension CanvasNode {
         }
         var node = CanvasNode(kind: .text, frame: box, text: "", color: color)
         node.shape = .line
-        node.linePoints = [CGPoint(x: (a.x - box.minX) / box.width, y: (a.y - box.minY) / box.height),
-                           CGPoint(x: (b.x - box.minX) / box.width, y: (b.y - box.minY) / box.height)]
-        if arrow { node.lineToEnd = "arrow" }
+        // Four places are a hundredth of a point on a box of a hundred.
+        func fraction(_ v: CGFloat) -> CGFloat { (v * 10_000).rounded() / 10_000 }
+        node.linePoints = points.map {
+            CGPoint(x: fraction(($0.x - box.minX) / box.width), y: fraction(($0.y - box.minY) / box.height))
+        }
         return node
     }
 }

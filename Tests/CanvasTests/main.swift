@@ -1293,6 +1293,119 @@ MainActor.assumeIsolated { toolKeyTests() }
 
 MainActor.assumeIsolated { clipTests() }
 
+@MainActor func excalidrawTests() {
+    print("\n— Paste from Excalidraw (revision 57) —")
+    // Both clips were taken from excalidraw.com's own copy handler,
+    // 2026-10-16: the first as drawn, the second restyled with a picture.
+    func fixture(_ name: String) -> String {
+        (try? String(contentsOfFile: "Tests/CanvasTests/Fixtures/\(name).json", encoding: .utf8)) ?? ""
+    }
+    check(ExcalidrawClip(text: "https://example.com") == nil, "a web address is not a clip")
+    check(ExcalidrawClip(text: #"{"type":"excalidraw/clipboard","elements":[]}"#) == nil, "nor is an empty one")
+    check(ExcalidrawClip(text: #"{"type":"other","elements":[{"id":"a","type":"rectangle"}]}"#) == nil,
+          "nor JSON of another type")
+
+    guard let plain = ExcalidrawClip(text: fixture("excalidraw-plain")) else {
+        check(false, "the plain sample parses"); return
+    }
+    let shapes = plain.nodes.filter { $0.shape != nil && $0.shape != .line && $0.shape != .text }
+    check(shapes.map { $0.shape! } == [.rectangle, .ellipse, .diamond, .diamond],
+          "rectangles, ellipses and diamonds are shapes", "got \(shapes.map { $0.shape!.rawValue })")
+    let rect = shapes[0]
+    check(rect.frame == CGRect(x: 192, y: 192, width: 192, height: 102), "where Excalidraw had them")
+    check(rect.text == "Start" && rect.textAlign == .center && rect.fontSize == nil && rect.fontFamily == .handDrawn,
+          "bound text is the shape's words, Excalifont at M hand-drawn and medium")
+    check(rect.cornerRadius == nil && rect.color == nil && !rect.filled && rect.strokeWidth == nil,
+          "a round black outline is Alex's default rectangle")
+    check(plain.edges.count == 1, "the arrow bound at both ends is a connector", "got \(plain.edges.count)")
+    if let edge = plain.edges.first {
+        check(edge.fromNode == rect.id && edge.toNode == shapes[1].id && edge.fromSide == .right
+              && edge.toSide == .left && edge.toEnd == nil && edge.fromEnd == nil,
+              "from the rectangle's right to the ellipse's left, its head at the end",
+              "got \(edge.fromSide.map(\.rawValue) ?? "-") \(edge.toSide.map(\.rawValue) ?? "-")")
+    }
+    let lines = plain.nodes.filter { $0.shape == .line }
+    check(lines.count == 2, "the freehand stroke and the free line are lines", "got \(lines.count)")
+    let ink = lines.first { $0.linePoints.count == 3 }
+    check(ink != nil, "a stroke keeps its distinct points", "got \(lines.map(\.linePoints))")
+    check(ink?.strokeWidth == StrokeWidth.thin.rawValue, "Excalidraw's thin is thin")
+    if let line = lines.first(where: { $0.linePoints.count == 2 }) {
+        let ends = line.lineEndpoints
+        check(ends.from == CGPoint(x: 461, y: 602) && ends.to == CGPoint(x: 666, y: 666)
+              && line.lineToEnd == nil, "a line runs where it was, no heads", "got \(ends)")
+    }
+    let boxes = plain.nodes.filter { $0.shape == .text }
+    check(boxes.count == 1 && boxes[0].text == "Hello from Excalidraw" && boxes[0].textAlign == .left,
+          "free text is a text box")
+    check(plain.pictures.isEmpty, "no pictures, none to write")
+
+    guard let styled = ExcalidrawClip(text: fixture("excalidraw-styled")) else {
+        check(false, "the styled sample parses"); return
+    }
+    func shape(_ kind: ShapeKind) -> CanvasNode? { styled.nodes.first { $0.shape == kind } }
+    check(shape(.rectangle)?.cornerRadius == 0 && shape(.rectangle)?.filled == true && shape(.rectangle)?.color == "4",
+          "sharp corners stay sharp; a green fill is green, filled")
+    check(shape(.ellipse)?.color == "1" && shape(.ellipse)?.filled == true, "a pink fill on a red stroke is red")
+    check(shape(.diamond)?.color == "5" && shape(.diamond)?.strokePattern == .dashed
+          && shape(.diamond)?.strokeWidth == StrokeWidth.bold.rawValue, "a bold dashed blue outline keeps all three")
+    let bent = styled.nodes.first { $0.shape == .line && $0.linePoints.count == 3 && $0.lineToEnd == "arrow" }
+    check(bent?.color == "3" && bent?.strokePattern == .dotted, "a bent orange dotted arrow is a yellow dotted line with its head")
+    if let bent {
+        let p = bent.linePoints[1]
+        check(abs(bent.x + p.x * bent.width - 561) < 0.01 && abs(bent.y + p.y * bent.height - 602) < 0.01,
+              "its bend is where it was")
+    }
+    let words = styled.nodes.first { $0.shape == .text }
+    check(words?.color == "4" && words?.fontFamily == .code && words?.fontSize == TextSize.large.rawValue,
+          "green Cascadia at L is a green code text box at L")
+    check((words?.height ?? 0) >= TextSize.large.rawValue * 1.5 && (words?.width ?? 0) >= 21 * TextSize.large.rawValue * 0.6,
+          "its box grows to hold its words in Alex's face", "got \(words?.frame ?? .null)")
+    let picture = styled.nodes.first { $0.kind == .file }
+    check(picture != nil && picture?.file == nil && styled.pictures[picture!.id]?.ext == "png"
+          && styled.pictures[picture!.id]?.data.prefix(4) == Data([0x89, 0x50, 0x4E, 0x47]),
+          "a picture brings its PNG bytes from the clip's files")
+
+    check(ExcalidrawClip.colour("#1e1e1e") == nil && ExcalidrawClip.colour("#ffffff") == nil
+          && ExcalidrawClip.colour("transparent") == nil, "black, white and none are the ink")
+    check(ExcalidrawClip.colour("#a5d8ff") == "5" && ExcalidrawClip.colour("#ffec99") == "3"
+          && ExcalidrawClip.colour("#6741d9") == "5" && ExcalidrawClip.colour("#c2255c") == "1"
+          && ExcalidrawClip.colour("#0c8599") == "5" && ExcalidrawClip.colour("#f00") == "1",
+          "the palette's colours snap by hue")
+    check(ExcalidrawClip.textSize(16) == .small && ExcalidrawClip.textSize(36) == .extraLarge,
+          "S and XL are S and XL")
+
+    // Placed: the pictures written beside the canvas, the whole mid-view,
+    // one undo step, selected.
+    let root = scratch.appendingPathComponent("excalidraw")
+    try! fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let vault = Vault(arguments: [], defaults: UserDefaults(suiteName: "alex-tests-\(UUID().uuidString)")!)
+    vault.open(root)
+    let store = CanvasStore(vault: vault)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    store.viewSize = CGSize(width: 1200, height: 800)
+    let undo = UndoManager()
+    store.undoManager = undo
+    store.newCanvas(named: "from excalidraw")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    let pasted = store.paste(styled, now: Date(timeIntervalSince1970: 0))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    check(pasted.count == styled.nodes.count && store.document.edges.count == 1,
+          "every node and the connector land", "got \(pasted.count) nodes, \(store.document.edges.count) edges")
+    check(store.selection == Set(pasted.map(\.id)), "and are the selection")
+    let bounds = pasted.reduce(CGRect.null) { $0.union($1.frame) }
+    let visible = store.viewport.visibleWorld(in: store.viewSize)
+    check(abs(bounds.midX - visible.midX) < 0.5 && abs(bounds.midY - visible.midY) < 0.5, "in the middle of the view")
+    let file = pasted.first { $0.kind == .file }?.file
+    check(file.map { fm.fileExists(atPath: root.appendingPathComponent($0).path) } == true
+          && file?.hasSuffix(".png") == true, "the picture is a file beside the canvas", "got \(file ?? "nil")")
+    undo.undo()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    check(store.document.nodes.isEmpty && store.document.edges.isEmpty, "one ⌘Z takes it all back",
+          "left \(store.document.nodes.map { $0.shape?.rawValue ?? $0.kind.typeName }), \(store.document.edges.count) edges")
+}
+
+MainActor.assumeIsolated { excalidrawTests() }
+
 @MainActor func undoDeltaTests() {
     print("\n— Undo by delta, writing, echoes (revision 52) —")
     func box(_ id: String, x: CGFloat, text: String = "") -> CanvasNode {
