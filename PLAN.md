@@ -1152,10 +1152,16 @@ shown as it will land, in ink at the regular width.
 Revision 59 (2026-10-16, asked by Liam, after ChatGPT's popover): a
 quick sketch from anywhere. A key held by the whole Mac, ⌃⇧Space unless
 Settings picks another, brings a floating window over whatever is in
-front, on every Space and over full-screen apps: a desk and nothing
-else. No sidebar, no palette, no zoom bar, no style panel, no sheet —
-the person knows the keys (revision 40's tool keys, ⌘Z, ⌘= and ⌘-, ⌘D,
-⇧2). It reopens the last canvas it showed, and the first time the
+front, on every Space and over full-screen apps, at the foot of the
+screen the pointer is on, in the middle, a gutter above the Dock, at the
+size it was last given: a desk with the least on it. No sidebar, no zoom
+bar, no sheet; the style panel at its top left, as on the window's desk,
+while something is selected; and the palette folded into one small
+muted glyph in the bottom right corner, no pill and no blue, wearing
+the tool in hand, its menu every tool
+with its key, then New note and Add a link (`ToolCorner`), so the room
+goes to the drawing and the keys stay the quick way (revision 40's tool
+keys, ⌘Z, ⌘= and ⌘-, ⌘D, ⇧2). It reopens the last canvas it showed, and the first time the
 canvas last changed — it never makes one on its own, unless the vault
 has none; ⌘N in it starts a fresh one,
 `Sketches/Sketch <date> <time>.canvas`, an ordinary canvas the sidebar
@@ -1164,8 +1170,8 @@ desk, not on it, a tab rises out of the window's top edge, centred, the
 shape of a folder's tab: a close glyph, then the canvas's icon and
 name and a chevron, its `PopupMenu` the new one and the canvases last
 changed, newest first.
-The tab's blank moves the window; its edges resize it, and the frame is
-remembered. Esc with nothing to put down, or the key again, puts the
+The tab's blank moves the window for as long as it is up; its edges
+resize it, and the size is remembered. Esc with nothing to put down, or the key again, puts the
 window away and gives the Mac back to the app that was in front; there
 is nothing to save (D2). Called from another app, only the sketch comes
 forward: Alex's own window is put away while it is up and put back

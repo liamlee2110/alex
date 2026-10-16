@@ -72,6 +72,47 @@ struct ToolPalette: View {
     }
 }
 
+/// The quick sketch's palette (revision 59): the palette folded into one
+/// small glyph in the desk's bottom right corner, the tool in hand in the
+/// muted ink, no pill and no blue square, so the desk keeps its room and
+/// the drawing its eye. Its menu is the palette's cells and Add's verbs, each with
+/// its key, so the menu teaches what the keys do.
+struct ToolCorner: View {
+    @ObservedObject var store: CanvasStore
+    @ObservedObject private var keys = ToolKeys.shared
+
+    private var symbol: Glyph {
+        switch store.tool {
+        case .select: return .mousePointer
+        case .draw(let tool): return tool.symbol
+        case .pen: return .pen
+        case .text: return .type
+        case .sticky: return .stickyNote
+        }
+    }
+
+    var body: some View {
+        IconMenu(symbol: symbol, label: "Tools", hint: "Tools", shortcut: keys.cap(for: store.tool),
+                 size: .small) {
+            MenuItem("Select", symbol: .mousePointer, checked: store.tool == .select,
+                     shortcut: keys.cap(for: .select)) { store.pressTool(.select) }
+            for tool in DrawTool.allCases {
+                MenuItem(tool.name, symbol: tool.symbol, checked: store.tool == .draw(tool),
+                         shortcut: keys.cap(for: .draw(tool))) { store.pressTool(.draw(tool)) }
+            }
+            MenuItem("Draw", symbol: .pen, checked: store.tool == .pen,
+                     shortcut: keys.cap(for: .pen)) { store.pressTool(.pen) }
+            MenuItem("Text", symbol: .type, checked: store.tool == .text,
+                     shortcut: keys.cap(for: .text)) { store.pressTool(.text) }
+            MenuItem("Sticky note", symbol: .stickyNote, checked: store.tool == .sticky,
+                     shortcut: keys.cap(for: .sticky)) { store.pressTool(.sticky) }
+            MenuItem.divider
+            MenuItem("New note", symbol: .fileText) { store.newNote() }
+            MenuItem("Add a link…", symbol: .link) { store.showLinkPrompt = true }
+        }
+    }
+}
+
 /// The palette's link prompt: one field, filled from the clipboard when
 /// the clipboard holds an address, so paste-then-return is the whole move.
 /// A card floating over the palette rather than a popover: a popover

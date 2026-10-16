@@ -159,6 +159,7 @@ final class QuickSketch: NSObject, NSWindowDelegate {
             }
             stowed.forEach { $0.orderOut(nil) }
         }
+        place(panel)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.invalidateShadow()
@@ -203,19 +204,23 @@ final class QuickSketch: NSObject, NSWindowDelegate {
         let hosting = NSHostingView(rootView: root)
         hosting.sizingOptions = []
         panel.contentView = hosting
-        if !panel.setFrameUsingName(Self.frameName) { centre(panel) }
+        panel.setFrameUsingName(Self.frameName)
         panel.setFrameAutosaveName(Self.frameName)
         self.panel = panel
         return panel
     }
 
-    /// The first time: in the middle of the screen the pointer is on.
-    private func centre(_ panel: NSPanel) {
+    /// Every time it comes up: at the foot of the screen the pointer is
+    /// on, in the middle, a gutter above the Dock, at the size it was
+    /// last given.
+    private func place(_ panel: NSPanel) {
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }
-        let size = panel.frame.size
-        panel.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2))
+        let size = NSSize(width: min(panel.frame.width, visible.width - 2 * Shell.gutter),
+                          height: min(panel.frame.height, visible.height - 2 * Shell.gutter))
+        panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.minY + Shell.gutter,
+                              width: size.width, height: size.height), display: true)
     }
 
     func windowDidResize(_ notification: Notification) { panel?.invalidateShadow() }

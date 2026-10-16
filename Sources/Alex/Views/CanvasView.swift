@@ -8,8 +8,8 @@ import UniformTypeIdentifiers
 /// into the store, made when the gesture ends, so one drag is one undo.
 struct CanvasView: View {
     @ObservedObject var store: CanvasStore
-    /// The quick sketch's desk (revision 59): no palette, no zoom bar, no
-    /// style panel — the keys do it all.
+    /// The quick sketch's desk (revision 59): no zoom bar, and the palette
+    /// folded to one glyph in the corner (`ToolCorner`).
     var bare = false
     /// Esc with nothing to put down: the quick sketch puts itself away.
     var onIdleEscape: (() -> Void)? = nil
@@ -146,7 +146,20 @@ struct CanvasView: View {
                 // zoom bar or the sidebar's card would meet the palette,
                 // the palette gives way, not the centre.
                 let insets = store.deskInsets
-                if !bare {
+                if bare {
+                    // The quick sketch's palette (revision 59): one small
+                    // glyph in the bottom right corner, its menu the rest.
+                    VStack(alignment: .trailing, spacing: Space.s) {
+                        if store.showLinkPrompt {
+                            LinkPrompt(store: store)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
+                        }
+                        ToolCorner(store: store)
+                    }
+                    .padding(Shell.gutter)
+                    .animation(Motion.quick, value: store.showLinkPrompt)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                } else {
                 ZStack(alignment: .bottom) {
                     ZoomControls(store: store, camera: camera)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("desk")).minX } action: { zoomEdge = $0 }
@@ -166,6 +179,7 @@ struct CanvasView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .animation(Motion.move, value: insets)
+                }
                 // The style panel (revision 39): under the sidebar's head
                 // row, clear of its card, while something is selected and
                 // at rest.
@@ -173,14 +187,14 @@ struct CanvasView: View {
                     if stylePanelShown {
                         StylePanel(store: store)
                             .padding(.leading, insets.leading + Shell.gutter)
-                            .padding(.top, Shell.gutter + Shell.headRow + Shell.gutter)
+                            // No head row over the quick sketch's desk.
+                            .padding(.top, bare ? Shell.gutter : Shell.gutter + Shell.headRow + Shell.gutter)
                             .transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .animation(Motion.quick, value: stylePanelShown)
                 .animation(Motion.move, value: insets)
-                }
                 if let trouble = store.trouble {
                     Text(trouble)
                         .font(Typography.meta)
