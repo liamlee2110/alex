@@ -93,7 +93,7 @@ struct CanvasView: View {
             // runs only when the canvas, the selection or a gesture does.
             let camera = store.camera
             ZStack(alignment: .topLeading) {
-                Ink.ground
+                Ink.desk
                 CameraReader(camera: camera) { vp in DotGrid(viewport: vp) }
                     .allowsHitTesting(false)
                 EventCatcher(

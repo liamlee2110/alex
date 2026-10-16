@@ -335,7 +335,7 @@ edge, near-black arrows and a wide panel. The shell is Figma's: one white
 sidebar floating over the desk's left holding the traffic lights, the
 canvases and the workspace, which folds into its head row; no top bar
 and nothing above it; a
-light-grey dotted desk running the window's height with white cards on
+dotted desk of warm white, the faintest trace of the logo's yellow, running the window's height with white cards on
 it, the palette at its foot, and the detail sheet floating at its right. The colours are white and
 neutral grey with black type, and one blue for selection, links, the
 caret, the door and the tool in hand. The chrome says three things in

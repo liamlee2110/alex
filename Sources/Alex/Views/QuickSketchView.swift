@@ -20,8 +20,11 @@ struct QuickSketchView: View {
             desk
                 .clipShape(RoundedRectangle(cornerRadius: Radius.panel))
         }
-        .background(outline.fill(Ink.ground))
+        // The desk's warm white, with the style panel's hairline and
+        // shadow: the two read as one set of chrome (revision 59).
+        .background(outline.fill(Ink.desk).elevation(.raised))
         .overlay(outline.stroke(Ink.hairline, lineWidth: 1).allowsHitTesting(false))
+        .padding(Shell.sketchMargin)
         .tint(Accent.text)
     }
 
@@ -152,12 +155,15 @@ struct FloatingStylePanel: View {
     @ObservedObject var store: CanvasStore
     let onSize: (CGSize) -> Void
 
-    static let margin = Space.xl
+    static let margin = Shell.sketchMargin
 
     var body: some View {
+        // No room at the trailing edge beyond the gutter it keeps from
+        // the sketch, so its window never lies over the sketch's edge.
         StylePanel(store: store)
             .fixedSize()
-            .padding(Self.margin)
+            .padding(EdgeInsets(top: Self.margin, leading: Self.margin,
+                                bottom: Self.margin, trailing: Shell.gutter))
             .onGeometryChange(for: CGSize.self) { $0.size } action: { onSize($0) }
     }
 }

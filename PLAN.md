@@ -1189,6 +1189,20 @@ window's and the sketch's — so a write of either reaches the other
 through the vault (`Vault.wrote`), not only the watcher,
 which hides our own writes.
 
+Revision 60 (2026-10-16, asked by Liam, looking at the quick sketch
+over a white app): the desk is white with the faintest trace of the
+logo's butter yellow (#F0D070), barely one part in a hundred —
+`Ink.desk`, #FFFEFB (dark #161615); #FEFCF6 was tried first and read
+as yellow — in the window and in the quick
+sketch, whose tab shares it. The light grey of revision 13 (#F5F5F6)
+read as grey once the sketch floated over other apps, and the logo's
+yellow is the one colour the brand already owns. The white chrome and
+cards still stand off it by their hairline and their one shadow;
+`Ink.ground` stays for a card's recess, a page not yet drawn. The quick
+sketch now draws its own card and shadow, the style panel's
+(`Elevation.raised`), in place of the window's, so the two read as one
+set of chrome, and the style panel's window ends at the sketch's edge.
+
 ## 0. One paragraph
 
 A native macOS app that shows a folder of plain files (a *vault*) as a

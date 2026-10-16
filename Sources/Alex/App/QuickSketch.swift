@@ -183,7 +183,8 @@ final class QuickSketch: NSObject, NSWindowDelegate {
 
     private func existingPanel(model: AppModel) -> SketchPanel {
         if let panel { return panel }
-        let size = NSSize(width: Shell.sketch.width, height: Shell.sketch.height + Shell.sketchTab)
+        let size = NSSize(width: Shell.sketch.width + 2 * Shell.sketchMargin,
+                          height: Shell.sketch.height + Shell.sketchTab + 2 * Shell.sketchMargin)
         let panel = SketchPanel(contentRect: NSRect(origin: .zero, size: size),
                                 styleMask: [.borderless, .resizable, .nonactivatingPanel],
                                 backing: .buffered, defer: false)
@@ -193,9 +194,11 @@ final class QuickSketch: NSObject, NSWindowDelegate {
         panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        // The card draws its own shadow, the style panel's.
+        panel.hasShadow = false
         panel.isReleasedWhenClosed = false
-        panel.minSize = NSSize(width: Shell.sketchMin.width, height: Shell.sketchMin.height + Shell.sketchTab)
+        panel.minSize = NSSize(width: Shell.sketchMin.width + 2 * Shell.sketchMargin,
+                               height: Shell.sketchMin.height + Shell.sketchTab + 2 * Shell.sketchMargin)
         panel.delegate = self
         panel.onNew = { [weak model] in model?.sketch.newSketch() }
         panel.onClose = { [weak self] in self?.hide() }
@@ -225,7 +228,7 @@ final class QuickSketch: NSObject, NSWindowDelegate {
         guard let visible = screen?.visibleFrame else { return }
         let size = NSSize(width: min(panel.frame.width, visible.width - 2 * Shell.gutter),
                           height: min(panel.frame.height, visible.height - 2 * Shell.gutter))
-        panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.minY + Shell.gutter,
+        panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.minY + Shell.gutter - Shell.sketchMargin,
                               width: size.width, height: size.height), display: true)
     }
 
@@ -278,10 +281,13 @@ final class QuickSketch: NSObject, NSWindowDelegate {
         guard styleShown, let panel, let style = styleWindow, let hosting = style.contentView else { return }
         let size = hosting.fittingSize
         let m = FloatingStylePanel.margin
-        let top = panel.frame.maxY - Shell.sketchTab + m
-        var x = panel.frame.minX - Shell.gutter - size.width + m
+        // The sketch's own card, inside its window's shadow room.
+        let card = panel.frame.insetBy(dx: Shell.sketchMargin, dy: Shell.sketchMargin)
+        let top = card.maxY - Shell.sketchTab + m
+        // Its window ends at the sketch's card: the panel a gutter short.
+        var x = card.minX - size.width
         if let visible = panel.screen?.visibleFrame, x + m < visible.minX {
-            x = panel.frame.minX + Shell.gutter - m
+            x = card.minX + Shell.gutter - m
         }
         style.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
     }

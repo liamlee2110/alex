@@ -53,7 +53,7 @@ struct MainWindowView: View {
                     Rectangle().fill(Ink.hairline).frame(height: 1)
                     WelcomeView()
                 }
-                .background(Ink.ground)
+                .background(Ink.desk)
             } else {
                 shell
             }
@@ -189,7 +189,7 @@ struct MainWindowView: View {
                 } else {
                     FirstCanvasView(store: store)
                         .padding(EdgeInsets(top: 0, leading: insets.leading, bottom: 0, trailing: insets.trailing))
-                        .background(Ink.ground)
+                        .background(Ink.desk)
                 }
                 Sidebar(store: store, door: model.door, shown: $sidebarVisible)
                     .frame(width: sidebarVisible ? sidebarWidth : Shell.sidebarFolded,

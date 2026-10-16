@@ -48,7 +48,8 @@ import AppKit
 // `OKLCH` so the lightness ladder ported from the web original survives
 // the move. Everything else is neutral (PLAN.md, revision 13): white
 // where something is read or pressed — the sidebar, a card, the sheet,
-// the chrome — a light grey under it all, black type, and one blue for
+// the chrome — under it all the desk, white warmed by the faintest trace
+// of the logo's butter yellow (revision 60), black type, and one blue for
 // what is live: the selection, a link, the caret, the door.
 //
 // The chrome says three things in three shapes (PLAN.md, revision 18,
@@ -205,6 +206,9 @@ enum Shell {
     static let sketchTabMin: CGFloat = 160
     static let sketchTabMax: CGFloat = 320
     static let sketchTabCorner: CGFloat = Radius.card
+    /// Room round the sketch and its style panel, each in a window of
+    /// its own, for the card's shadow: one `Elevation`, not the window's.
+    static let sketchMargin: CGFloat = Space.xl
 }
 
 /// The desk's dot grid: a lattice in world units, drawn in screen space,
@@ -867,8 +871,13 @@ enum Ink {
     static let wellHover = Color(nsColor: InkNS.wellHover)
     /// White: a card, the sidebar.
     static let card     = Color(light: "FFFFFF", dark: "232326")
-    /// The light grey under everything: the desk.
+    /// The light grey of a card's recess: a page not yet drawn.
     static let ground   = Color(light: "F5F5F6", dark: "151517")
+    /// Under everything, the desk (revision 60): white with a trace of the
+    /// logo's yellow (#F0D070), barely one part in a hundred, so the
+    /// white chrome and cards still stand off it by their hairline and
+    /// shadow. The quick sketch's desk and tab are the same.
+    static let desk     = Color(light: "FFFEFB", dark: "161615")
     /// Chrome floating over the desk: the tool palette, the zoom bar,
     /// the folded sidebar's cards, the detail sheet.
     static let float    = Color(light: "FFFFFF", dark: "2A2A2E")
