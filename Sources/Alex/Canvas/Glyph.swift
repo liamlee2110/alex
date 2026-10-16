@@ -12,6 +12,7 @@ enum Glyph: String, CaseIterable, Sendable {
     case circle
     case diamond
     case slash
+    case pen
     case arrowUpRight = "arrow-up-right"
     case stickyNote = "sticky-note"
     case plus

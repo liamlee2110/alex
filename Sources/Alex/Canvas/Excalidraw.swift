@@ -11,7 +11,7 @@ import CoreGraphics
 /// words when a text is bound inside; a free text is a text box; an arrow
 /// or line bound at both ends to pasted shapes is a connector, its bound
 /// text the label, and any other is a line through its points; a freehand
-/// stroke is a line through its points too; a picture is a picture beside the
+/// stroke is a stroke drawn by hand (revision 58); a picture is a picture beside the
 /// canvas; a frame is a section; an embed is a link card. Colours snap to
 /// none and the four, widths and patterns to the style panel's. Angles,
 /// opacity, roughness, fill patterns, groups and locks are left behind.
@@ -216,8 +216,8 @@ struct ExcalidrawClip {
     }
 
     /// A line through the element's points, which Excalidraw keeps
-    /// relative to its x and y. A freehand stroke's hundreds of points are
-    /// thinned to those a point or more apart.
+    /// relative to its x and y; a freehand stroke's hundreds of points
+    /// are thinned to those a point or more apart and drawn by hand.
     private static func line(_ e: [String: Any], simplify: Bool) -> CanvasNode? {
         let origin = CGPoint(x: number(e["x"]) ?? 0, y: number(e["y"]) ?? 0)
         var points: [CGPoint] = (e["points"] as? [[Any]] ?? []).compactMap { pair in
@@ -229,6 +229,13 @@ struct ExcalidrawClip {
             for p in points where kept.last.map({ hypot(p.x - $0.x, p.y - $0.y) >= 1 }) ?? true { kept.append(p) }
             if let last = points.last, kept.count == 1 || kept.last != last { kept.append(last) }
             points = kept
+        }
+        guard !points.isEmpty else { return nil }
+        // A stroke by hand is the Draw tool's (revision 58): ink, no heads.
+        if simplify {
+            var node = CanvasNode.freehand(through: points, color: colour(e["strokeColor"]))
+            stroke(&node, e)
+            return node
         }
         guard points.count >= 2 else { return nil }
         var node = CanvasNode.line(through: points, color: colour(e["strokeColor"]))

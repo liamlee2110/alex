@@ -5,8 +5,10 @@ import CoreGraphics
 /// carrying `x-shape`, so Obsidian shows a text card in the same place and
 /// nothing in the file is Alex's alone but the `x-` keys (D4). `text` is
 /// the Text tool's box: words on the desk with no outline and no paper.
+/// `freedraw` is a stroke drawn by hand with the Draw tool (revision 58),
+/// Excalidraw's name for it.
 enum ShapeKind: String, CaseIterable {
-    case rectangle, ellipse, diamond, line, text
+    case rectangle, ellipse, diamond, line, text, freedraw
 }
 
 /// What the palette's Shapes menu offers, in its order: the four kinds,
@@ -270,7 +272,7 @@ struct StyleScope: Equatable {
         }
         colour = nodes.first?.color
         colourShared = all { $0.color == nodes.first?.color }
-        fill = all { $0.shape != nil && $0.shape != .text && $0.shape != .line }
+        fill = all { $0.shape != nil && $0.shape != .text && !$0.isStroke }
         filled = fill ? shared(\.filled) : nil
         stroke = all { $0.shape != nil && $0.shape != .text }
         pattern = stroke ? shared(\.strokePattern) : nil
@@ -278,9 +280,9 @@ struct StyleScope: Equatable {
         arrowheads = all { $0.shape == .line }
         fromArrow = arrowheads ? shared { $0.lineFromEnd == "arrow" } : nil
         toArrow = arrowheads ? shared { $0.lineToEnd == "arrow" } : nil
-        font = all { ($0.writtenOnDesk && $0.shape != .line) || ($0.kind == .file && $0.file?.hasSuffix(".md") == true) }
+        font = all { ($0.writtenOnDesk && !$0.isStroke) || ($0.kind == .file && $0.file?.hasSuffix(".md") == true) }
         family = font ? shared(\.fontFamily) : nil
-        size = all { $0.writtenOnDesk && $0.shape != .line }
+        size = all { $0.writtenOnDesk && !$0.isStroke }
         textSize = size ? shared { TextSize(points: $0.fontSize) } : nil
         align = size
         textAlign = align ? shared(\.textAlign) : nil
@@ -331,6 +333,14 @@ extension CanvasNode {
     /// itself, with nothing for a sheet to add (revision 28); its style
     /// is the style panel's (revision 39).
     var writtenOnDesk: Bool { kind == .text }
+
+    /// A line or a stroke drawn by hand: a path through points, pressed
+    /// along itself, never filled and with no side to connect from.
+    var isStroke: Bool { shape == .line || shape == .freedraw }
+
+    /// What a double-click or ↩ writes in: words on the desk, but not on
+    /// a stroke drawn by hand, which is only ink (revision 58).
+    var takesWords: Bool { writtenOnDesk && shape != .freedraw }
 
     /// A picture's card: the picture is the whole of it, so it neither
     /// folds to a title row nor opens in the detail sheet (revision 45).
@@ -460,6 +470,14 @@ extension CanvasNode {
     static func line(from a: CGPoint, to b: CGPoint, arrow: Bool, color: String? = nil) -> CanvasNode {
         var node = line(through: [a, b], color: color)
         if arrow { node.lineToEnd = "arrow" }
+        return node
+    }
+
+    /// A stroke drawn by hand through `points` (revision 58): boxed as a
+    /// line is, its points fractions of the box. One point is a dot.
+    static func freehand(through points: [CGPoint], color: String? = nil) -> CanvasNode {
+        var node = line(through: points.count == 1 ? [points[0], points[0]] : points, color: color)
+        node.shape = .freedraw
         return node
     }
 

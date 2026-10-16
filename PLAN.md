@@ -1105,8 +1105,8 @@ two clips taken from excalidraw.com's own copy):
   and bound words (the label) kept; any other is a line through every
   point it has. A line now holds two or more points under `x-points`,
   drawn as a polyline with each head along its last segment.
-- **Freehand**: a line through its points, thinned to those a point
-  apart.
+- **Freehand**: a stroke drawn by hand (revision 58's `freedraw`), its
+  points thinned to those a point apart.
 - **Pictures**: the clip's `files` carry each picture as a data URL; the
   bytes are written beside the canvas as `Pasted image <date>.<ext>`
   (D2) and placed as a picture card. **Frames** are sections, named;
@@ -1127,6 +1127,27 @@ two clips taken from excalidraw.com's own copy):
 `--keys x,y:cmd-v` presses Paste with whatever the pasteboard holds, so
 a snapshot proves a paste; a run whose window is not key misses it, so
 retry.
+
+Revision 58 (2026-10-16, asked by Liam, with Excalidraw's pen beside
+Alex's palette): drawing by hand. A **Draw** cell after Shapes, key P,
+Excalidraw's freedraw: a drag on the desk, or from a card, lays ink
+along the pointer, and the pen stays in hand stroke after stroke until
+P, V, Esc or another tool puts it down; a click is a dot. The stroke is
+shown as it will land, in ink at the regular width.
+- **On disk**: a JSON Canvas `text` node with `x-shape: freedraw`, its
+  points under `x-points` as fractions of its box, the line's key of
+  revision 57, so a resize stretches the stroke and Obsidian shows an
+  empty text card in its place (D4). The pointer's points are thinned
+  to those more than half a screen point off the path
+  (Ramer–Douglas–Peucker, `Freehand.simplified`) and drawn as a smooth
+  curve through their midpoints (`Freehand.path`). One stroke, one node,
+  one undo step, not selected, so the next stroke follows at once.
+- **Style**: colour, stroke width and pattern, as a line's; no fill, no
+  words (a double-click and ↩ pass it by), no arrowheads, no connector
+  sides, and an arrow does not bind to it. Pressed along its stroke
+  alone, as a line is (revision 53).
+- Not taken: Excalidraw's pressure (a pointer has none; its simulated
+  taper is a renderer of its own) and opacity, declined in revision 56.
 
 ## 0. One paragraph
 

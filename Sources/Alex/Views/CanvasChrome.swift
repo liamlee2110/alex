@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The tool palette (revision 22): a white bar at the foot of the desk,
 /// Figma's bottom toolbar in Alex's ink. The tools you hold — Select;
-/// Shapes, a menu of the five wearing the one last drawn; Text, bare words
+/// Shapes, a menu of the five wearing the one last drawn; Draw, ink by
+/// hand that stays in hand stroke after stroke (revision 58); Text, bare words
 /// where the desk is next clicked or dragged; Sticky, a note there — then
 /// a hairline, then Add, the one verb, a menu of what brings a file in. A cell that opens a menu says
 /// so with a chevron. Every cell is one square, 32 on a side, `Space.s`
@@ -38,6 +39,9 @@ struct ToolPalette: View {
                     }
                 }
             }
+            IconButton(symbol: .pen, label: "Draw", shortcut: keys.cap(for: .pen), size: .tool,
+                       active: store.tool == .pen, activeStyle: .solid,
+                       key: keys.cap(for: .pen)) { store.pressTool(.pen) }
             IconButton(symbol: .type, label: "Text", shortcut: keys.cap(for: .text), size: .tool,
                        active: store.tool == .text, activeStyle: .solid,
                        key: keys.cap(for: .text)) { store.pressTool(.text) }

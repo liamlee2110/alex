@@ -58,6 +58,7 @@ CANVAS=("${MODELS[@]}" Sources/Alex/Vault/Vault.swift Sources/Alex/Vault/VaultWa
         Sources/Alex/Canvas/Shape.swift Sources/Alex/Canvas/Folders.swift
         Sources/Alex/Canvas/CanvasStore.swift Sources/Alex/Canvas/CanvasDelta.swift Sources/Alex/Canvas/VaultConfig.swift
         Sources/Alex/Canvas/Search.swift Sources/Alex/Canvas/ToolKeys.swift Sources/Alex/Canvas/Clipboard.swift Sources/Alex/Canvas/Excalidraw.swift
+        Sources/Alex/Canvas/Freehand.swift
         Sources/Alex/App/Launch.swift)
 
 echo ""

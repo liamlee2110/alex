@@ -126,12 +126,15 @@ final class CanvasStore: ObservableObject {
         case sticky
         /// A shape where the desk is next dragged.
         case draw(DrawTool)
+        /// Ink where the desk is dragged, stroke after stroke, until
+        /// another tool is picked (revision 58, Excalidraw's Draw).
+        case pen
 
         /// A tool that makes something from the next press on the desk,
         /// and hands back to Select once it has.
         var draws: Bool {
             switch self {
-            case .text, .sticky, .draw: return true
+            case .text, .sticky, .draw, .pen: return true
             case .select: return false
             }
         }
@@ -1303,6 +1306,19 @@ final class CanvasStore: ObservableObject {
         }
     }
 
+    /// A stroke drawn by hand through `points`, in world units, as the
+    /// pointer went (revision 58): thinned to the points that shape it at
+    /// this zoom, kept as one node and one undo step, and not selected,
+    /// so the next stroke can follow at once. The pen stays in hand.
+    @discardableResult
+    func drawFreehand(_ points: [CGPoint]) -> CanvasNode? {
+        guard !points.isEmpty else { return nil }
+        let kept = Freehand.simplified(points, tolerance: Freehand.tolerance / max(viewport.scale, 0.01))
+        let node = CanvasNode.freehand(through: kept)
+        add(node, name: "Draw")
+        return node
+    }
+
     /// The block an arrow's end at `world` attaches to: the topmost card,
     /// sticky or shape within `reach` of the point. A section does not
     /// count, since an arrow drawn across a section's floor is a shape and
@@ -1310,7 +1326,7 @@ final class CanvasStore: ObservableObject {
     /// something drawn between blocks.
     func bindTarget(_ world: CGPoint, reach: CGFloat = 0, excluding: Set<String> = []) -> CanvasNode? {
         document.nodes.reversed().first { node in
-            node.kind != .group && node.shape != .line && !excluding.contains(node.id)
+            node.kind != .group && !node.isStroke && !excluding.contains(node.id)
                 && node.frame.insetBy(dx: -reach, dy: -reach).contains(world)
         }
     }
@@ -1430,7 +1446,7 @@ final class CanvasStore: ObservableObject {
     /// Text and Sticky note, pressed while in hand, are put down.
     func pressTool(_ pressed: Tool) {
         switch pressed {
-        case .text, .sticky: setTool(tool == pressed ? .select : pressed)
+        case .text, .sticky, .pen: setTool(tool == pressed ? .select : pressed)
         case .select, .draw: setTool(pressed)
         }
     }
@@ -1474,7 +1490,7 @@ final class CanvasStore: ObservableObject {
         guard !ids.isEmpty else { return }
         mutate("Text alignment") { doc in
             for id in ids {
-                guard var node = doc.node(id), node.writtenOnDesk, node.shape != .line else { continue }
+                guard var node = doc.node(id), node.writtenOnDesk, !node.isStroke else { continue }
                 node.textAlign = align
                 doc.update(node)
             }

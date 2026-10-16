@@ -4,7 +4,7 @@ import Combine
 /// The keys that pick the palette's tools (PLAN.md, revision 40). One
 /// bare key per tool — a letter or a digit, no modifier, the way every
 /// canvas app's tools answer — read on the desk and never in an editor.
-/// The defaults are Figma's and Excalidraw's (V R O D L A T S); Settings
+/// The defaults are Figma's and Excalidraw's (V R O D L A P T S); Settings
 /// lets each be changed or cleared, and the choice lives in UserDefaults
 /// under one key, applied at once. A key held by another tool is refused
 /// with a sentence rather than swapped, so a press never surprises.
@@ -135,7 +135,7 @@ extension CanvasStore.Tool {
     /// Every tool a key can pick, in the palette's order.
     static let allCases: [CanvasStore.Tool] = [
         .select, .draw(.rectangle), .draw(.ellipse), .draw(.diamond), .draw(.line), .draw(.arrow),
-        .text, .sticky,
+        .pen, .text, .sticky,
     ]
 
     /// What it is written as in UserDefaults.
@@ -144,6 +144,7 @@ extension CanvasStore.Tool {
         case .select: return "select"
         case .text: return "text"
         case .sticky: return "sticky"
+        case .pen: return "pen"
         case .draw(let tool): return tool.rawValue
         }
     }
@@ -153,6 +154,7 @@ extension CanvasStore.Tool {
         case .select: return "Select"
         case .text: return "Text"
         case .sticky: return "Sticky note"
+        case .pen: return "Draw"
         case .draw(let tool): return tool.name
         }
     }
@@ -162,6 +164,7 @@ extension CanvasStore.Tool {
         case .select: return .mousePointer
         case .text: return .type
         case .sticky: return .stickyNote
+        case .pen: return .pen
         case .draw(let tool): return tool.symbol
         }
     }
@@ -172,6 +175,7 @@ extension CanvasStore.Tool {
         case .select: return "v"
         case .text: return "t"
         case .sticky: return "s"
+        case .pen: return "p"
         case .draw(let tool): return tool.key
         }
     }

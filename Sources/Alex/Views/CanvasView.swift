@@ -26,6 +26,9 @@ struct CanvasView: View {
     /// A shape being dragged out with a shape tool, in desk points, as
     /// pressed and pointed; `constrainedDrawing` is what the shape takes.
     @State private var drawing: (start: CGPoint, current: CGPoint)?
+    /// The stroke the Draw tool is laying down, in desk points (revision
+    /// 58). A reference, so only its preview redraws at each move.
+    @State private var pen = PenStroke()
     /// Whether ⇧ is down: a box drawn or resized keeps its proportions
     /// while it is (revision 35). Read off every pointer move and, through
     /// `EventCatcher`, every change of the keys, so a press between moves
@@ -121,6 +124,7 @@ struct CanvasView: View {
                     CameraReader(camera: camera) { vp in pendingEdge(vp: vp) }
                 }
                 drawingPreview()
+                PenPreview(pen: pen, camera: camera)
                 if let marquee {
                     Rectangle()
                         .fill(Accent.wash)
@@ -219,6 +223,7 @@ struct CanvasView: View {
                 store.select(nil)
                 store.setTool(.select)
                 drawing = nil
+                pen.points = []
                 binding = []
                 editingNode = nil
             }
@@ -383,6 +388,7 @@ struct CanvasView: View {
                     }
                     .onEnded { _ in
                         let vp = store.viewport
+                        if store.tool == .pen { finishStroke(vp: vp); return }
                         if let current = constrainedDrawing { finishDrawing(current, vp: vp); return }
                         guard let rect = marquee else { return }
                         marquee = nil
@@ -451,6 +457,9 @@ struct CanvasView: View {
         switch store.tool {
         case .draw(let tool):
             store.draw(tool, from: world, to: world)
+        case .pen:
+            // A click with the pen is a dot, as Excalidraw's is.
+            store.drawFreehand([world])
         case .text:
             let node = store.addText(from: world, to: world)
             editingNode = node.id
@@ -466,6 +475,11 @@ struct CanvasView: View {
     /// A shape tool's drag, wherever it began: the raw points, with ⇧ read
     /// now so the preview is right before the keys next change.
     private func noteDrawing(_ value: DragGesture.Value) {
+        if store.tool == .pen {
+            if pen.points.isEmpty { pen.points.append(value.startLocation) }
+            pen.points.append(value.location)
+            return
+        }
         shiftHeld = Self.shiftIsDown
         drawing = (value.startLocation, value.location)
         noteBinding()
@@ -506,6 +520,14 @@ struct CanvasView: View {
         default:
             return drawing
         }
+    }
+
+    /// The pen lifted: the stroke, in world units, is written as one node.
+    private func finishStroke(vp: Viewport) {
+        let points = pen.points.map(vp.toWorld)
+        pen.points = []
+        store.drawFreehand(points)
+        focused = true
     }
 
     private func finishDrawing(_ current: (start: CGPoint, current: CGPoint), vp: Viewport) {
@@ -693,7 +715,7 @@ struct CanvasView: View {
     private func writable(_ node: CanvasNode) -> Bool {
         switch node.kind {
         case .text:
-            return true
+            return node.takesWords
         case .file:
             guard let path = node.file, !store.isDirectoryNode(node) else { return false }
             return VaultEntry.Kind.forExtension((path as NSString).pathExtension) == .markdown
@@ -761,6 +783,7 @@ struct CanvasView: View {
                               onBegin: { store.beginWriting(node.id) },
                               onEnd: { store.endWriting(node.id, $0) })
                         .onTapGesture(count: 2) {
+                        guard node.takesWords else { return }
                         store.select(node.id)
                         editingNode = node.id
                     }
@@ -853,7 +876,9 @@ struct CanvasView: View {
                 pressAdded = false
                 let still = hypot(value.translation.width, value.translation.height) < 4
                 guard still else { return }
-                if store.tool.draws {
+                if store.tool == .pen {
+                    store.drawFreehand([store.viewport.toWorld(value.location)])
+                } else if store.tool.draws {
                     select(node)
                 } else if NSEvent.modifierFlags.contains(.shift) {
                     if !added { store.selection.remove(node.id) }
@@ -894,6 +919,7 @@ struct CanvasView: View {
             }
             .onEnded { value in
                 let vp = store.viewport
+                if store.tool == .pen { finishStroke(vp: vp); return }
                 if let current = constrainedDrawing { finishDrawing(current, vp: vp); return }
                 guard let current = drag else { return }
                 drag = nil
@@ -1035,7 +1061,7 @@ struct CanvasView: View {
     /// (FigJam's): drag its dot onto another block to connect the two. Not
     /// on a section or a line, and not while it is written in.
     private func showsConnectors(_ node: CanvasNode) -> Bool {
-        store.tool == .select && store.selection == [node.id] && node.shape != .line
+        store.tool == .select && store.selection == [node.id] && !node.isStroke
             && editingNode != node.id && drag == nil && resize == nil
     }
 
@@ -1417,6 +1443,29 @@ struct DotGrid: View {
 /// The crosshair over the desk while a shape or text tool is picked, on
 /// the same push-and-pop discipline as `HoverCursor`: popped when the
 /// pointer leaves, when the tool hands back, and when the view goes.
+/// The stroke under the pen (revision 58), in desk points as the pointer
+/// went. A class, so a move redraws the preview and not the desk.
+final class PenStroke: ObservableObject {
+    @Published var points: [CGPoint] = []
+}
+
+/// The stroke being drawn, in ink at the regular width at this zoom, as
+/// it will land: Excalidraw shows the stroke itself, not an outline.
+private struct PenPreview: View {
+    @ObservedObject var pen: PenStroke
+    @ObservedObject var camera: Camera
+
+    var body: some View {
+        Canvas { context, _ in
+            guard !pen.points.isEmpty else { return }
+            let width = CGFloat(StrokeWidth.regular.rawValue) * camera.viewport.scale
+            context.stroke(Path(Freehand.path(pen.points)), with: .color(Ink.primary),
+                           style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 private struct ToolCursor: ViewModifier {
     let active: Bool
     @State private var pushed = false

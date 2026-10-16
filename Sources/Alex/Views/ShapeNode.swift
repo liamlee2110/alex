@@ -58,6 +58,8 @@ struct ShapeNodeView: View {
                     if node.lineFromEnd == "arrow" {
                         Self.arrowhead(at: points[0], from: points[1], width: width).fill(stroke)
                     }
+                } else if kind == .freedraw {
+                    Path(Freehand.path(Self.points(node.linePoints, in: geo.size))).stroke(stroke, style: style)
                 } else if kind != .text {
                     let path = Self.outline(kind, in: box.insetBy(dx: width / 2, dy: width / 2), radius: radius)
                     path.fill(fill)
@@ -78,7 +80,7 @@ struct ShapeNodeView: View {
     /// cards and the desk inside it pressable.
     private var takesInside: Bool {
         if selected || editing || kind == .text { return true }
-        guard kind != .line else { return false }
+        guard kind != .line, kind != .freedraw else { return false }
         return node.filled || !(node.text ?? "").isEmpty
     }
 
@@ -96,6 +98,8 @@ struct ShapeNodeView: View {
             let outline: Path
             if kind == .line, points.count >= 2 {
                 outline = ShapeNodeView.polyline(ShapeNodeView.points(points, in: rect.size))
+            } else if kind == .freedraw {
+                outline = Path(Freehand.path(ShapeNodeView.points(points, in: rect.size)))
             } else {
                 outline = ShapeNodeView.outline(kind, in: rect.insetBy(dx: Stroke.shape / 2, dy: Stroke.shape / 2),
                                                 radius: radius)
@@ -213,7 +217,7 @@ struct ShapeNodeView: View {
             path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
             path.closeSubpath()
             return path
-        case .line, .text:
+        case .line, .text, .freedraw:
             return Path()
         }
     }
@@ -256,6 +260,7 @@ enum ShapeLabel {
         if node.shape == .line {
             return node.lineToEnd == "arrow" || node.lineFromEnd == "arrow" ? "Arrow" : "Line"
         }
+        if node.shape == .freedraw { return "Drawing" }
         return node.shape.map(\.rawValue.capitalized) ?? "Shape"
     }
 
@@ -265,6 +270,7 @@ enum ShapeLabel {
             return DrawTool.arrow.symbol
         }
         if node.shape == .text { return .type }
+        if node.shape == .freedraw { return .pen }
         return node.shape.flatMap { DrawTool(rawValue: $0.rawValue) }?.symbol ?? DrawTool.rectangle.symbol
     }
 }

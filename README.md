@@ -51,11 +51,12 @@ where things stand. It is generic enough for any folder of notes.
   desk to marquee-select, ⇧ to add.
 - The palette at the desk's foot has one cell per purpose: Select;
   Shapes, a menu of rectangle, ellipse, diamond, line and arrow that wears
-  the shape last drawn; Text, bare words where you click or drag; Sticky
+  the shape last drawn; Draw, ink by hand, stroke after stroke until you
+  put the pen down; Text, bare words where you click or drag; Sticky
   note, one where you next click; then, past
   a hairline, Add, a menu of new note, import files and add a link. A cell
   with a chevron opens a menu, each cell wears its key at the corner, and
-  every tooltip says it on a keycap. The keys are V R O D L A T S until you
+  every tooltip says it on a keycap. The keys are V R O D L A P T S until you
   change them in Settings, a letter or a digit each. Pick a shape, drag it
   out on the desk (or click for the default size), and the palette hands
   back to Select. ⇧ while you drag keeps the proportions: a square, a

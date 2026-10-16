@@ -1137,10 +1137,10 @@ MainActor.assumeIsolated { styleTests() }
     defer { defaults.removePersistentDomain(forName: suite) }
 
     let keys = ToolKeys(defaults: defaults)
-    check(Tool.allCases.count == 8 && Set(Tool.allCases.map(\.id)).count == 8, "eight tools, each with its own id")
-    check(Set(Tool.allCases.map(\.defaultKey)).count == 8, "eight different default keys")
+    check(Tool.allCases.count == 9 && Set(Tool.allCases.map(\.id)).count == 9, "nine tools, each with its own id")
+    check(Set(Tool.allCases.map(\.defaultKey)).count == 9, "nine different default keys")
     check(keys.isDefault && keys.cap(for: .select) == "V" && keys.cap(for: .draw(.ellipse)) == "O"
-          && keys.cap(for: .sticky) == "S",
+          && keys.cap(for: .sticky) == "S" && keys.cap(for: .pen) == "P",
           "the defaults are Figma's and Excalidraw's", "got \(keys.keys)")
     check(keys.tool(for: "R") == .draw(.rectangle) && keys.tool(for: "r") == .draw(.rectangle),
           "a key picks its tool whatever its case")
@@ -1308,7 +1308,7 @@ MainActor.assumeIsolated { clipTests() }
     guard let plain = ExcalidrawClip(text: fixture("excalidraw-plain")) else {
         check(false, "the plain sample parses"); return
     }
-    let shapes = plain.nodes.filter { $0.shape != nil && $0.shape != .line && $0.shape != .text }
+    let shapes = plain.nodes.filter { $0.shape != nil && !$0.isStroke && $0.shape != .text }
     check(shapes.map { $0.shape! } == [.rectangle, .ellipse, .diamond, .diamond],
           "rectangles, ellipses and diamonds are shapes", "got \(shapes.map { $0.shape!.rawValue })")
     let rect = shapes[0]
@@ -1324,12 +1324,13 @@ MainActor.assumeIsolated { clipTests() }
               "from the rectangle's right to the ellipse's left, its head at the end",
               "got \(edge.fromSide.map(\.rawValue) ?? "-") \(edge.toSide.map(\.rawValue) ?? "-")")
     }
+    let ink = plain.nodes.filter { $0.shape == .freedraw }
+    check(ink.count == 1 && ink[0].linePoints.count == 3, "a freehand stroke is drawn by hand through its distinct points",
+          "got \(ink.map(\.linePoints))")
+    check(ink.first?.strokeWidth == StrokeWidth.thin.rawValue, "Excalidraw's thin is thin")
     let lines = plain.nodes.filter { $0.shape == .line }
-    check(lines.count == 2, "the freehand stroke and the free line are lines", "got \(lines.count)")
-    let ink = lines.first { $0.linePoints.count == 3 }
-    check(ink != nil, "a stroke keeps its distinct points", "got \(lines.map(\.linePoints))")
-    check(ink?.strokeWidth == StrokeWidth.thin.rawValue, "Excalidraw's thin is thin")
-    if let line = lines.first(where: { $0.linePoints.count == 2 }) {
+    check(lines.count == 1, "the free line is a line", "got \(lines.count)")
+    if let line = lines.first {
         let ends = line.lineEndpoints
         check(ends.from == CGPoint(x: 461, y: 602) && ends.to == CGPoint(x: 666, y: 666)
               && line.lineToEnd == nil, "a line runs where it was, no heads", "got \(ends)")
@@ -1587,6 +1588,58 @@ MainActor.assumeIsolated { undoDeltaTests() }
 }
 
 MainActor.assumeIsolated { batchBTests() }
+
+@MainActor func penTests() {
+    print("\n— The Draw tool (revision 58) —")
+    let wobble = (0...100).map { CGPoint(x: CGFloat($0), y: CGFloat($0 % 2) * 0.2) }
+    let thin = Freehand.simplified(wobble)
+    check(thin.count == 2 && thin.first == wobble.first && thin.last == wobble.last,
+          "a wobble under half a point thins to its two ends", "got \(thin.count)")
+    let corner = [CGPoint(x: 0, y: 0), CGPoint(x: 50, y: 1), CGPoint(x: 100, y: 0), CGPoint(x: 100, y: 50), CGPoint(x: 100, y: 100)]
+    check(Freehand.simplified(corner) == [corner[0], corner[1], corner[2], corner[4]],
+          "a corner and a bump are kept, a point on a straight run is not", "got \(Freehand.simplified(corner))")
+    check(Freehand.simplified(corner, tolerance: 2) == [corner[0], corner[2], corner[4]],
+          "a looser tolerance drops the bump")
+    let curve = Freehand.path([CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 10), CGPoint(x: 20, y: 0)])
+    check(curve.currentPoint == CGPoint(x: 20, y: 0) && !curve.boundingBoxOfPath.isEmpty,
+          "the curve runs from the first point to the last")
+
+    let stroke = CanvasNode.freehand(through: [CGPoint(x: 10, y: 20), CGPoint(x: 110, y: 70), CGPoint(x: 60, y: 120)])
+    check(stroke.kind == .text && stroke.shape == .freedraw && stroke.frame == CGRect(x: 10, y: 20, width: 100, height: 100),
+          "a stroke is a text node boxed round its points", "got \(stroke.frame)")
+    check(stroke.linePoints == [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0.5), CGPoint(x: 0.5, y: 1)],
+          "its points are fractions of the box", "got \(stroke.linePoints)")
+    let dot = CanvasNode.freehand(through: [CGPoint(x: 50, y: 50)])
+    check(dot.linePoints.count == 2 && dot.frame.width == ShapeMetrics.minimumThickness
+          && dot.frame.midX == 50 && dot.frame.midY == 50, "a click is a dot with a box to be selected by")
+    check(!stroke.takesWords && stroke.isStroke, "a stroke takes no words and is pressed along itself")
+    let scope = StyleScope([stroke])
+    check(scope.stroke && !scope.fill && !scope.font && !scope.size && !scope.arrowheads && scope.duplicable,
+          "a stroke is styled by colour, width and pattern, and duplicates")
+
+    let root = scratch.appendingPathComponent("pen")
+    try! fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let defaults = UserDefaults(suiteName: "alex-tests-\(UUID().uuidString)")!
+    let vault = Vault(arguments: [], defaults: defaults)
+    vault.open(root)
+    let store = CanvasStore(vault: vault)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "Pen")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    store.pressTool(.pen)
+    let drawn = store.drawFreehand(wobble + [CGPoint(x: 100, y: 60)])
+    check(store.tool == .pen && store.selection.isEmpty, "the pen stays in hand and selects nothing")
+    check(drawn.map { $0.linePoints.count == 3 } == true, "the stroke is thinned at this zoom",
+          "got \(drawn?.linePoints.count ?? 0)")
+    let onDisk = (try? Data(contentsOf: root.appendingPathComponent(store.canvasPath))).flatMap { try? CanvasDocument.decode($0) }
+    check(onDisk?.node(drawn?.id ?? "")?.shape == .freedraw, "it is on disk as x-shape freedraw")
+    store.pressTool(.pen)
+    check(store.tool == .select, "P again puts the pen down")
+}
+
+MainActor.assumeIsolated { penTests() }
+
 
 print("")
 if failures == 0 { print("✓ canvas suite passed") } else { print("✗ \(failures) failure(s)") }
