@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CoreGraphics
+import ImageIO
 
 /// The open canvas, one of the `.canvas` files the person made (D5,
 /// revision 54), or none while the vault has none; its nodes and edges, the
@@ -20,15 +21,27 @@ final class CanvasStore: ObservableObject {
     @Published private(set) var document = CanvasDocument() {
         // A canvas changed or opened under an open find: its hits again,
         // without moving the camera.
-        didSet { if showFind { refreshFind(look: false) } }
+        didSet {
+            if showFind { refreshFind(look: false) }
+            // A picked edge that left the canvas, or a canvas left.
+            if !edgeSelection.isEmpty {
+                let kept = edgeSelection.filter { id in document.edges.contains { $0.id == id } }
+                if kept != edgeSelection { edgeSelection = kept }
+            }
+        }
     }
     @Published var selection: Set<String> = [] {
         // One file picked is one file open in the panel: what Recents lists.
         didSet {
             if let node = selectedNode, node.kind == .file, let file = node.file { noteRecent(file) }
             if !selection.isEmpty { looseFile = nil }
+            if !selection.isEmpty, !edgeSelection.isEmpty { edgeSelection = [] }
         }
     }
+    /// The edges picked on the desk (revision 62), styled in the style
+    /// panel and removed with ⌫. Never beside picked nodes: picking either
+    /// lets the other go, as Excalidraw's arrow and box are styled apart.
+    @Published var edgeSelection: Set<String> = []
     /// The files last opened in the panel, newest first (revision 17): the
     /// sidebar's Recents. Remembered per vault, like the viewport, and
     /// pruned of anything that has left the vault.
@@ -527,6 +540,17 @@ final class CanvasStore: ObservableObject {
 
     func select(_ id: String?) {
         selection = id.map { [$0] } ?? []
+        if id == nil, !edgeSelection.isEmpty { edgeSelection = [] }
+    }
+
+    /// Pick an edge, or with ⇧ add it to the edges picked or take it away.
+    func selectEdge(_ id: String, adding: Bool = false) {
+        if !selection.isEmpty { selection = [] }
+        if adding {
+            edgeSelection.formSymmetricDifference([id])
+        } else {
+            edgeSelection = [id]
+        }
     }
 
     func node(forFile path: String) -> CanvasNode? {
@@ -997,18 +1021,78 @@ final class CanvasStore: ObservableObject {
     }
 
     func removeEdge(_ id: String) {
-        mutate("Remove edge") { $0.edges.removeAll { $0.id == id } }
+        removeEdges([id])
+    }
+
+    /// What ⌫ and Remove from canvas take: the picked edges, else the
+    /// picked nodes.
+    func removeSelection() {
+        if !edgeSelection.isEmpty { removeEdges(edgeSelection) } else { remove(selection) }
+    }
+
+    func removeEdges(_ ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        mutate(ids.count == 1 ? "Remove edge" : "Remove edges") { $0.edges.removeAll { ids.contains($0.id) } }
+    }
+
+    // MARK: - An edge's style (revision 62)
+
+    func setEdgeColor(_ ids: Set<String>, _ color: String?) {
+        setEdges(ids, name: "Colour") { $0.color = color }
+    }
+
+    /// Thin, regular or bold, the shapes' three; regular is no key.
+    func setEdgeStrokeWidth(_ ids: Set<String>, _ width: StrokeWidth) {
+        setEdges(ids, name: "Stroke width") { $0.strokeWidth = width == .regular ? nil : width.rawValue }
+    }
+
+    func setEdgeStrokePattern(_ ids: Set<String>, _ pattern: StrokePattern) {
+        setEdges(ids, name: pattern.title + " line") { $0.strokePattern = pattern }
+    }
+
+    func setEdgeRoute(_ ids: Set<String>, _ route: EdgeRoute) {
+        setEdges(ids, name: route.title + " line") { $0.route = route }
+    }
+
+    /// An arrowhead on, or off, either end, in JSON Canvas's own keys: a
+    /// start's head is `fromEnd: "arrow"`, an end without one `toEnd: "none"`.
+    func setEdgeEnds(_ ids: Set<String>, from: Bool? = nil, to: Bool? = nil) {
+        setEdges(ids, name: "Arrowheads") { edge in
+            if let from { edge.fromEnd = from ? "arrow" : nil }
+            if let to { edge.toEnd = to ? nil : "none" }
+        }
+    }
+
+    private func setEdges(_ ids: Set<String>, name: String, _ change: (inout CanvasEdge) -> Void) {
+        guard !ids.isEmpty else { return }
+        mutate(name) { doc in
+            for i in doc.edges.indices where ids.contains(doc.edges[i].id) { change(&doc.edges[i]) }
+        }
     }
 
     /// Place a vault file on this canvas at a point, or at a free spot
     /// beside `near`, else beside the selection, else below everything.
     @discardableResult
     func place(_ path: String, at point: CGPoint? = nil, near: String? = nil, size given: CGSize? = nil) -> CanvasNode {
-        let size = given ?? Placement.size(forFile: path, isDirectory: vault.isDirectory(path))
+        let size = given ?? imagePixels(path).map(Placement.size(forImage:))
+            ?? Placement.size(forFile: path, isDirectory: vault.isDirectory(path))
         let anchor = near.flatMap { document.node($0)?.frame } ?? selectedNode?.frame
         let origin = point ?? Placement.freeSlot(for: size, in: document, near: anchor)
         let node = CanvasNode(kind: .file, frame: CGRect(origin: origin, size: size), file: path)
         return add(node, name: "Place")
+    }
+
+    /// A picture file's size in pixels, read from its header, so a dropped
+    /// picture's card takes its shape as a pasted one does.
+    private func imagePixels(_ path: String) -> CGSize? {
+        guard VaultEntry(path: path, isDirectory: false).kind == .image,
+              let url = vault.url(for: path),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? CGFloat,
+              let h = props[kCGImagePropertyPixelHeight] as? CGFloat else { return nil }
+        let rotated = (props[kCGImagePropertyOrientation] as? Int).map { (5...8).contains($0) } ?? false
+        return rotated ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
     }
 
     func placeAllUnplaced() {
@@ -1085,6 +1169,23 @@ final class CanvasStore: ObservableObject {
         }
         let node = CanvasNode(kind: .link, frame: CGRect(origin: origin, size: size), url: url.absoluteString)
         add(node, name: "Add link")
+        select(node.id)
+        return node
+    }
+
+    /// Words off the clipboard (⌘V on the desk) that are not a web address:
+    /// a text box holding them mid-view, as tall as `size`, the view having
+    /// measured them. One paste is one undo step.
+    @discardableResult
+    func pasteText(_ text: String, size: CGSize) -> CanvasNode? {
+        guard isOpen, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let centre = viewport.toWorld(CGPoint(x: viewSize.width / 2, y: viewSize.height / 2))
+        let slot = CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2,
+                          width: size.width, height: size.height)
+        let origin = Placement.freeSlot(for: size, in: document, near: slot)
+        var node = CanvasNode.shape(.text, frame: CGRect(origin: origin, size: size))
+        node.text = text
+        add(node, name: "Paste")
         select(node.id)
         return node
     }

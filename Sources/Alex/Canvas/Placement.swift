@@ -35,15 +35,25 @@ enum Placement {
         size(for: VaultEntry(path: path, isDirectory: isDirectory))
     }
 
-    /// A pasted picture's card: a card's width and the picture's own shape,
-    /// kept between a strip and a page so a panorama or a phone screenshot
-    /// still lands as something you can grab.
+    /// A picture's card: the picture's own shape, never cropped. It starts
+    /// at a card's width; a tall one (a phone screenshot) shrinks to a
+    /// page's height, and a thin strip widens towards a page's width, so
+    /// either still lands as something you can grab.
     static func size(forImage pixels: CGSize) -> CGSize {
         guard pixels.width > 0, pixels.height > 0 else { return cardSize }
-        let width = cardSize.width
-        let height = (width * pixels.height / pixels.width).rounded()
-        return CGSize(width: width, height: min(max(height, 120), 640))
+        let ratio = pixels.height / pixels.width
+        var width = cardSize.width
+        if width * ratio > imageMax { width = imageMax / ratio }
+        if width * ratio < imageMin { width = min(imageMin / ratio, imageMax) }
+        return CGSize(width: width.rounded(), height: (width * ratio).rounded())
     }
+
+    /// The short and long bounds a picture's card is fitted between.
+    static let imageMin: CGFloat = 120, imageMax: CGFloat = 640
+
+    /// The widest a pasted text box starts: a line of words longer than
+    /// this wraps, as a note's column does.
+    static let pastedTextWidth: CGFloat = 480
 
     /// The file a pasted picture is written to, as Obsidian names it:
     /// `Pasted image 2026-09-29 14.32.png`, then ` 2`, ` 3` while taken.

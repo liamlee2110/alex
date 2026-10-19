@@ -193,6 +193,10 @@ gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
 - **Two drag gestures on one view stop each other.** The desk's marquee
   drag plus a simultaneous zero-distance drag for the press: neither,
   nor the tap, fired. The desk keeps one drag and a tap.
+- **`onCopyCommand` empties the pasteboard whatever its action does.**
+  ⌘C on an empty desk wiped what another app had copied, though the
+  action wrote nothing. Pass `nil` as the action (and to `onCutCommand`)
+  while there is nothing to take, so the command is off.
 - **`NSApp.currentEvent` at a tap is not the click.** By the time
   `onTapGesture` runs the current event can be a pointer move, whose
   `clickCount` is 0 or 1; the desk counts a double-click itself by time

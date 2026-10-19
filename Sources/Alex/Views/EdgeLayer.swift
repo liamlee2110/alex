@@ -1,11 +1,20 @@
 import SwiftUI
 
-/// Edges, drawn in screen space so a 1pt line stays 1pt at any zoom.
+/// Edges, drawn at the desk's scale (revision 62): a line and its head
+/// shrink with the zoom as the blocks they join do, so an overview is one
+/// picture made smaller rather than a web of lines heavier than its cards.
+/// A line never thins past `minimumWidth`, so it never vanishes. The label
+/// and a selection's marks stay one size on screen, as all chrome does.
 struct EdgeLayer: View {
     let document: CanvasDocument
     let viewport: Viewport
     /// Edges implied by frontmatter (PLAN.md §4): dashed, never stored.
     var derived: [CanvasStore.DerivedEdge] = []
+    /// The edges picked on the desk, which wear the selection's blue.
+    var selected: Set<String> = []
+
+    /// The thinnest a line is drawn on screen, however far out.
+    static let minimumWidth: CGFloat = 0.5
 
     var body: some View {
         Canvas { context, _ in
@@ -14,7 +23,8 @@ struct EdgeLayer: View {
                 guard let a = byID[implied.from], let b = byID[implied.to] else { continue }
                 var edge = CanvasEdge(from: implied.from, to: implied.to)
                 edge.toEnd = "arrow"
-                draw(edge, from: a, to: b, in: &context, dashed: true)
+                edge.strokePattern = .dashed
+                draw(edge, from: a, to: b, in: &context, implied: true)
             }
             for edge in document.edges {
                 guard let a = byID[edge.fromNode], let b = byID[edge.toNode] else { continue }
@@ -24,38 +34,43 @@ struct EdgeLayer: View {
     }
 
     private func draw(_ edge: CanvasEdge, from a: CanvasNode, to b: CanvasNode,
-                      in context: inout GraphicsContext, dashed: Bool = false) {
-        let sides = EdgeGeometry.sides(from: a.frame, to: b.frame,
-                                       fromSide: edge.fromSide, toSide: edge.toSide)
-        let p0: CGPoint = viewport.toScreen(EdgeGeometry.anchor(a.frame, sides.from))
-        let p3: CGPoint = viewport.toScreen(EdgeGeometry.anchor(b.frame, sides.to))
-        let distance: CGFloat = hypot(p3.x - p0.x, p3.y - p0.y)
-        let reach: CGFloat = min(max(distance * 0.4, 30), 220)
-        let n0: CGPoint = EdgeGeometry.normal(sides.from)
-        let n3: CGPoint = EdgeGeometry.normal(sides.to)
-        let c1 = CGPoint(x: p0.x + n0.x * reach, y: p0.y + n0.y * reach)
-        let c2 = CGPoint(x: p3.x + n3.x * reach, y: p3.y + n3.y * reach)
+                      in context: inout GraphicsContext, implied: Bool = false) {
+        let line: EdgePath = EdgeGeometry.path(edge, from: a.frame, to: b.frame)
+        let scale: CGFloat = viewport.scale
+        let toScreen = CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                                         tx: viewport.offset.x, ty: viewport.offset.y)
         var path = Path()
-        path.move(to: p0)
-        path.addCurve(to: p3, control1: c1, control2: c2)
-
-        let color: Color = edge.color.map { Hepta.label($0) } ?? (dashed ? Ink.guide.opacity(0.55) : Ink.guide)
-        let width: CGFloat = 1.5
-        let dash: [CGFloat] = dashed ? [6, 5] : []
-        context.stroke(path, with: .color(color),
-                       style: StrokeStyle(lineWidth: width, lineCap: .round, dash: dash))
-
-        let arrowSize: CGFloat = 9
-        if edge.toEnd != "none" {
-            EdgeGeometry.arrow(at: p3, from: c2, size: arrowSize, in: &context, color: color)
+        path.move(to: line.start)
+        if line.route == .curved, line.points.count == 4 {
+            path.addCurve(to: line.end, control1: line.points[1], control2: line.points[2])
+        } else {
+            path.addLines(line.points)
         }
-        if edge.fromEnd == "arrow" {
-            EdgeGeometry.arrow(at: p0, from: c1, size: arrowSize, in: &context, color: color)
+        let screenPath: Path = path.applying(toScreen)
+
+        let color: Color = edge.color.map { Hepta.label($0) } ?? (implied ? Ink.guide.opacity(0.55) : Ink.guide)
+        let width: CGFloat = max(edge.strokeLineWidth * scale, Self.minimumWidth)
+        let pattern: StrokePattern = edge.strokePattern
+        let dash: [CGFloat] = Stroke.pattern(pattern, width: edge.strokeLineWidth).map { $0 * scale }
+        context.stroke(screenPath, with: .color(color),
+                       style: StrokeStyle(lineWidth: width, lineCap: pattern == .dashed ? .butt : .round,
+                                          lineJoin: .round, dash: dash))
+
+        // The head is the drawn line's own (revision 55), at the desk's scale.
+        if edge.arrowAtEnd {
+            let head = ShapeNodeView.arrowhead(at: line.end, from: line.endTail, width: edge.strokeLineWidth)
+            context.fill(head.applying(toScreen), with: .color(color))
         }
-        guard let label = edge.label, !label.isEmpty, viewport.scale > 0.3 else { return }
-        let midX: CGFloat = 0.125 * p0.x + 0.375 * c1.x + 0.375 * c2.x + 0.125 * p3.x
-        let midY: CGFloat = 0.125 * p0.y + 0.375 * c1.y + 0.375 * c2.y + 0.125 * p3.y
-        let mid = CGPoint(x: midX, y: midY)
+        if edge.arrowAtStart {
+            let head = ShapeNodeView.arrowhead(at: line.start, from: line.startTail, width: edge.strokeLineWidth)
+            context.fill(head.applying(toScreen), with: .color(color))
+        }
+
+        let isSelected: Bool = !implied && selected.contains(edge.id)
+        if isSelected { selection(screenPath, ends: [line.start, line.end], in: &context) }
+
+        guard let label = edge.label, !label.isEmpty, scale > 0.3 else { return }
+        let mid: CGPoint = viewport.toScreen(line.middle)
         let text = context.resolve(Text(label).font(Typography.micro).foregroundStyle(Ink.muted))
         let size: CGSize = text.measure(in: CGSize(width: 240, height: 60))
         let pill = CGRect(x: mid.x - size.width / 2 - 6, y: mid.y - size.height / 2 - 3,
@@ -63,54 +78,18 @@ struct EdgeLayer: View {
         context.fill(Path(roundedRect: pill, cornerRadius: Radius.mark), with: .color(Ink.card))
         context.draw(text, at: mid, anchor: .center)
     }
-}
 
-enum EdgeGeometry {
-    static func sides(from a: CGRect, to b: CGRect, fromSide: CanvasSide?, toSide: CanvasSide?)
-        -> (from: CanvasSide, to: CanvasSide) {
-        let dx = b.midX - a.midX, dy = b.midY - a.midY
-        let guessFrom: CanvasSide, guessTo: CanvasSide
-        if abs(dx) >= abs(dy) {
-            guessFrom = dx > 0 ? .right : .left
-            guessTo = dx > 0 ? .left : .right
-        } else {
-            guessFrom = dy > 0 ? .bottom : .top
-            guessTo = dy > 0 ? .top : .bottom
+    /// A picked edge, Figma's way: the selection's one-point blue along
+    /// the line and a connector's dot at each end, one size at every zoom.
+    private func selection(_ path: Path, ends: [CGPoint], in context: inout GraphicsContext) {
+        context.stroke(path, with: .color(Accent.text),
+                       style: StrokeStyle(lineWidth: Handle.outline, lineCap: .round, lineJoin: .round))
+        for end in ends {
+            let p: CGPoint = viewport.toScreen(end)
+            let dot = Path(ellipseIn: CGRect(x: p.x - Handle.connector / 2, y: p.y - Handle.connector / 2,
+                                             width: Handle.connector, height: Handle.connector))
+            context.fill(dot, with: .color(Ink.card))
+            context.stroke(dot, with: .color(Accent.text), lineWidth: Handle.outline)
         }
-        return (fromSide ?? guessFrom, toSide ?? guessTo)
-    }
-
-    static func anchor(_ r: CGRect, _ side: CanvasSide) -> CGPoint {
-        switch side {
-        case .top: return CGPoint(x: r.midX, y: r.minY)
-        case .bottom: return CGPoint(x: r.midX, y: r.maxY)
-        case .left: return CGPoint(x: r.minX, y: r.midY)
-        case .right: return CGPoint(x: r.maxX, y: r.midY)
-        }
-    }
-
-    static func normal(_ side: CanvasSide) -> CGPoint {
-        switch side {
-        case .top: return CGPoint(x: 0, y: -1)
-        case .bottom: return CGPoint(x: 0, y: 1)
-        case .left: return CGPoint(x: -1, y: 0)
-        case .right: return CGPoint(x: 1, y: 0)
-        }
-    }
-
-    static func arrow(at tip: CGPoint, from control: CGPoint, size: CGFloat,
-                      in context: inout GraphicsContext, color: Color) {
-        let dx = tip.x - control.x, dy = tip.y - control.y
-        let len = max(hypot(dx, dy), 0.001)
-        let ux = dx / len, uy = dy / len
-        let base = CGPoint(x: tip.x - ux * size, y: tip.y - uy * size)
-        let left = CGPoint(x: base.x - uy * size * 0.5, y: base.y + ux * size * 0.5)
-        let right = CGPoint(x: base.x + uy * size * 0.5, y: base.y - ux * size * 0.5)
-        var path = Path()
-        path.move(to: tip)
-        path.addLine(to: left)
-        path.addLine(to: right)
-        path.closeSubpath()
-        context.fill(path, with: .color(color))
     }
 }

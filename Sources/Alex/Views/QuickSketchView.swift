@@ -11,6 +11,9 @@ struct QuickSketchView: View {
     let onClose: () -> Void
     let onOpenInWindow: (String) -> Void
     var onStylePanel: ((Bool) -> Void)? = nil
+    /// The tab's width, for the window's grips: its top resizes, its
+    /// sides do not.
+    var onTabWidth: ((CGFloat) -> Void)? = nil
     @State private var tabWidth = Shell.sketchTabMin
 
     var body: some View {
@@ -72,7 +75,7 @@ struct QuickSketchView: View {
         .fixedSize()
         .frame(height: Shell.sketchTab)
         .windowDragArea()
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabWidth = $0; onTabWidth?($0) }
         .frame(maxWidth: .infinity)
     }
 

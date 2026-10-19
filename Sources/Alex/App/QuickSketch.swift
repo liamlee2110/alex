@@ -117,6 +117,108 @@ final class SketchPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { onClose?() }
 }
 
+/// The sketch's edges (revision 63). A borderless window has no frame to
+/// resize by, and this one's own edges lie in the clear room kept for the
+/// card's shadow, where a press falls through to the app behind. So the
+/// card's edges are the grips: this view lies under the hosting view,
+/// answers the press in a band along them (`SketchFrame.grip`), wears the
+/// resize pointer there, and moves the window's edge while it is dragged.
+final class SketchEdges: NSView {
+    var tabWidth: CGFloat = Shell.sketchTabMin
+    private var cursorShown = false
+
+    init(content: NSView) {
+        super.init(frame: .zero)
+        content.frame = bounds
+        content.autoresizingMask = [.width, .height]
+        addSubview(content)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isFlipped: Bool { true }
+
+    private func grip(at point: NSPoint) -> Grip? {
+        SketchFrame.grip(at: point, in: bounds, margin: Shell.sketchMargin,
+                         tab: CGSize(width: tabWidth, height: Shell.sketchTab))
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        return grip(at: local) != nil ? self : super.hitTest(point)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// The window server hands a press on a clear pixel to the window
+    /// behind, so the bands outside the card are filled with the least
+    /// ink there is: one part in 255, no colour anyone can see.
+    override func draw(_ dirtyRect: NSRect) {
+        let card = bounds.insetBy(dx: Shell.sketchMargin, dy: Shell.sketchMargin)
+        let band = card.insetBy(dx: -SketchFrame.outside, dy: -SketchFrame.outside)
+        NSColor(white: 0, alpha: 1.0 / 255).setFill()
+        let ring = NSBezierPath(rect: band)
+        ring.append(NSBezierPath(rect: card).reversed)
+        ring.fill()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited,
+                                                              .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let grip = grip(at: convert(event.locationInWindow, from: nil))
+        if let grip {
+            Self.cursor(grip).set()
+            cursorShown = true
+        } else if cursorShown {
+            NSCursor.arrow.set()
+            cursorShown = false
+        }
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if cursorShown { NSCursor.arrow.set() }
+        cursorShown = false
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window, let grip = grip(at: convert(event.locationInWindow, from: nil)) else {
+            return super.mouseDown(with: event)
+        }
+        let start = NSEvent.mouseLocation, frame = window.frame
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let now = NSEvent.mouseLocation
+            window.setFrame(SketchFrame.resized(frame, grip: grip,
+                                                by: CGVector(dx: now.x - start.x, dy: now.y - start.y),
+                                                minimum: window.minSize),
+                            display: true)
+            Self.cursor(grip).set()
+            if next.type == .leftMouseUp { break }
+        }
+    }
+
+    private static func cursor(_ grip: Grip) -> NSCursor {
+        let position: NSCursor.FrameResizePosition
+        switch grip {
+        case .left: position = .left
+        case .right: position = .right
+        case .top: position = .top
+        case .bottom: position = .bottom
+        case .topLeft: position = .topLeft
+        case .topRight: position = .topRight
+        case .bottomLeft: position = .bottomLeft
+        case .bottomRight: position = .bottomRight
+        }
+        return .frameResize(position: position, directions: .all)
+    }
+}
+
 /// The floating desk (revision 59): brought over whatever is in front by
 /// the key, put away by the key again or by Esc with nothing to put down,
 /// handing the Mac back to the app that was in front.
@@ -135,6 +237,10 @@ final class QuickSketch: NSObject, NSWindowDelegate {
     /// something is selected: a child window, so it moves with it.
     private var styleWindow: NSPanel?
     private var styleShown = false
+    private var edges: SketchEdges?
+    /// Whether the sketch has a place of its own yet, from this run or
+    /// the last: the first time it comes up at the screen's foot.
+    private var placedBefore = false
 
     var isShown: Bool { panel?.isVisible == true }
 
@@ -208,28 +314,32 @@ final class QuickSketch: NSObject, NSWindowDelegate {
                                        self?.hide()
                                        model?.openInWindow(path)
                                    },
-                                   onStylePanel: { [weak self] shown in self?.setStylePanel(shown) })
+                                   onStylePanel: { [weak self] shown in self?.setStylePanel(shown) },
+                                   onTabWidth: { [weak self] width in self?.edges?.tabWidth = width })
             .environmentObject(model.vault)
         let hosting = NSHostingView(rootView: root)
         hosting.sizingOptions = []
-        panel.contentView = hosting
-        panel.setFrameUsingName(Self.frameName)
+        let edges = SketchEdges(content: hosting)
+        self.edges = edges
+        panel.contentView = edges
+        panel.acceptsMouseMovedEvents = true
+        placedBefore = panel.setFrameUsingName(Self.frameName)
         panel.setFrameAutosaveName(Self.frameName)
         self.panel = panel
         return panel
     }
 
-    /// Every time it comes up: at the foot of the screen the pointer is
-    /// on, in the middle, a gutter above the Dock, at the size it was
-    /// last given.
+    /// Where it was last put, on the screen the pointer is on, at the
+    /// size it was last given (revision 63); the first time, or on
+    /// another screen, at the foot of that one (`SketchFrame.placed`).
     private func place(_ panel: NSPanel) {
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }
-        let size = NSSize(width: min(panel.frame.width, visible.width - 2 * Shell.gutter),
-                          height: min(panel.frame.height, visible.height - 2 * Shell.gutter))
-        panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.minY + Shell.gutter - Shell.sketchMargin,
-                              width: size.width, height: size.height), display: true)
+        let frame = SketchFrame.placed(placedBefore ? panel.frame : nil, size: panel.frame.size, on: visible,
+                                       margin: Shell.sketchMargin, gutter: Shell.gutter)
+        panel.setFrame(frame, display: true)
+        placedBefore = true
     }
 
     func windowDidResize(_ notification: Notification) {

@@ -3,7 +3,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// The desk: a pan-and-zoom viewport over the open canvas. Groups sit under
-/// everything, edges are drawn in screen space so they stay crisp, nodes
+/// everything, edges are drawn over the world at its scale (revision 62), nodes
 /// outside the visible rect are never built. Every edit here is one call
 /// into the store, made when the gesture ends, so one drag is one undo.
 struct CanvasView: View {
@@ -126,7 +126,7 @@ struct CanvasView: View {
                 // (revision 53), not only once it lands.
                 let document = liveDocument(store.document), derived = store.derivedEdges()
                 CameraReader(camera: camera) { vp in
-                    EdgeLayer(document: document, viewport: vp, derived: derived)
+                    EdgeLayer(document: document, viewport: vp, derived: derived, selected: store.edgeSelection)
                 }
                 .allowsHitTesting(false)
                 if connecting != nil {
@@ -230,14 +230,17 @@ struct CanvasView: View {
             .focusable()
             .focusEffectDisabled()
             .focused($focused)
-            .onDeleteCommand { store.remove(store.selection) }
+            .onDeleteCommand { store.removeSelection() }
             // ⌘C and ⌘X take the selection as a clip (revision 48); an
-            // editor's words are its own text view's to copy.
-            .onCopyCommand { copySelection(); return [] }
-            .onCutCommand {
+            // editor's words are its own text view's to copy. With nothing
+            // to take the commands are off: SwiftUI empties the pasteboard
+            // before any copy action runs, so an action that copies nothing
+            // still wipes what the user had copied elsewhere.
+            .onCopyCommand(perform: canCopy ? { copySelection(); return [] } : nil)
+            .onCutCommand(perform: canCopy ? {
                 if copySelection() { store.remove(store.selection) }
                 return []
-            }
+            } : nil)
             // ⌘V mid-view: a clip comes back as a copy, a copied file is
             // imported as a drop would be, a picture becomes a PNG beside
             // the canvas, an address a link card.
@@ -246,7 +249,7 @@ struct CanvasView: View {
                 // Writing in a box: Esc puts the pen down and leaves the
                 // box selected, as Excalidraw's does (revision 50).
                 if editingNode != nil { return finishEditing() }
-                if let onIdleEscape, store.selection.isEmpty, store.tool == .select, drawing == nil {
+                if let onIdleEscape, store.selection.isEmpty, store.edgeSelection.isEmpty, store.tool == .select, drawing == nil {
                     return onIdleEscape()
                 }
                 store.select(nil)
@@ -351,6 +354,9 @@ struct CanvasView: View {
         }
     }
 
+    /// Whether ⌘C and ⌘X have anything on the desk to take.
+    private var canCopy: Bool { editingNode == nil && !store.selection.isEmpty }
+
     /// The selection onto the pasteboard: the clip under Alex's own
     /// type, its words as text for any other app, else its cards' files.
     @discardableResult
@@ -396,9 +402,27 @@ struct CanvasView: View {
             if let node = store.pasteImage(png: png, pixels: pixels) { store.focusRequest = node.id }
             return
         }
-        guard let held = board.string(forType: .URL) ?? board.string(forType: .string),
-              let node = store.addLink(held, at: nil) else { return }
-        store.focusRequest = node.id
+        guard let held = board.string(forType: .URL) ?? board.string(forType: .string) else { return }
+        if let node = store.addLink(held, at: nil) {
+            store.focusRequest = node.id
+            return
+        }
+        // Any other words, copied out of a box or from anywhere, are a
+        // text box, as Excalidraw and FigJam make of pasted text.
+        store.pasteText(held, size: pastedTextSize(held))
+    }
+
+    /// The box pasted words need: their own width up to a column's, and
+    /// as many lines as they wrap to, with the box's inset round them.
+    private func pastedTextSize(_ text: String) -> CGSize {
+        let font = DeskFace.font(CanvasNode.shape(.text, frame: .zero).fontFamily, size: Typography.bodySize)
+        let inset = Space.xs * 2
+        let bounds = (text as NSString).boundingRect(
+            with: CGSize(width: Placement.pastedTextWidth - inset, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
+        let line = Typography.lineHeight(ofSize: Typography.bodySize)
+        return CGSize(width: max(ceil(bounds.width) + inset + Space.xs, ShapeMetrics.defaultTextSize.width),
+                      height: max(ceil(bounds.height) + inset + line, ShapeMetrics.defaultTextSize.height))
     }
 
     // MARK: - The ground: deselect, marquee, new sticky
@@ -431,6 +455,7 @@ struct CanvasView: View {
                             .map(\.id)
                         let additive = NSEvent.modifierFlags.contains(.shift)
                         store.selection = additive ? store.selection.union(hits) : Set(hits)
+                        if !additive { store.edgeSelection = [] }
                         focused = true
                     })
             // A tap, not a press: a second drag gesture on the desk, even a
@@ -469,7 +494,14 @@ struct CanvasView: View {
         store.showLinkPrompt = false
         store.showNewWorkspace = false
         editingNode = nil
-        if !NSEvent.modifierFlags.contains(.shift) { store.select(nil) }
+        // A press on an edge's line picks it (revision 62), within the
+        // reach a drawn line's press has, ⇧ adding it or taking it away.
+        let shift = NSEvent.modifierFlags.contains(.shift)
+        if let edge = EdgeGeometry.hit(store.document, at: world, reach: Handle.strokeHit / store.viewport.scale) {
+            store.selectEdge(edge.id, adding: shift)
+            return
+        }
+        if !shift { store.select(nil) }
     }
 
     /// The topmost rectangle, ellipse or diamond whose outline holds `world`.
@@ -1038,7 +1070,7 @@ struct CanvasView: View {
     /// (revision 39): not while a selected node is written in, nor while
     /// anything is moved, resized, drawn, connected from or marqueed over.
     private var stylePanelShown: Bool {
-        !store.selection.isEmpty && store.tool == .select
+        !(store.selection.isEmpty && store.edgeSelection.isEmpty) && store.tool == .select
             && drag == nil && resize == nil && drawing == nil && connecting == nil && marquee == nil
             && editingNode.map { !store.selection.contains($0) } != false
     }

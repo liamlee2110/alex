@@ -110,7 +110,7 @@ struct CanvasCommands: Commands {
             Button("Add to the side panel") { store?.pinLivePanel() }
                 .keyboardShortcut(.return, modifiers: .option)
                 .disabled(store == nil)
-            Button("Remove from canvas") { if let store { store.remove(store.selection) } }
+            Button("Remove from canvas") { store?.removeSelection() }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(store == nil)
             // Excalidraw's keys (revision 53), on the desk: a box being

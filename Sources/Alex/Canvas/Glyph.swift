@@ -101,6 +101,9 @@ enum Glyph: String, CaseIterable, Sendable {
     case square
     case moveLeft = "move-left"
     case moveRight = "move-right"
+    // An edge's route (revision 62), Excalidraw's arrow types.
+    case spline
+    case cornerDownRight = "corner-down-right"
     case pencil
     // The style panel's order (revision 55), Excalidraw's four.
     case arrowDown = "arrow-down"

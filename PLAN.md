@@ -1219,6 +1219,45 @@ names in the zip's table of contents; a Word file's pages from the
 only beside a nonzero `<Words>`, since a file made by a script carries
 its template's `1`; iWork files say nothing. The panel still offers
 "Open with the default app" for these: a reader there is a later change.
+Revision 62 (2026-10-19, asked by Liam, looking at a mind map of
+arrows at 12%): an edge is something you can pick and style, as
+Excalidraw's arrow is. A click on its line, within the reach a drawn
+line's press has (`Handle.strokeHit`, 7 points on screen) and half its
+own width, picks it — the topmost, ⇧ adding or taking it away — and it
+wears the selection's one-point blue along the line and a connector's dot
+at each end. Picked edges and picked nodes never mix: picking either
+lets the other go, since an arrow's style and a box's are different
+sets. The style panel then offers an edge's own: the colour (none and
+the four), the stroke's width and pattern (revision 55's three and
+three, under the same `x-stroke-width` and `x-stroke-style` keys a
+drawn line uses), the line — curved, straight, or an elbow of right
+angles, Excalidraw's three arrow types, under `x-route`, a curve
+written as no key — the arrowheads in JSON Canvas's own `fromEnd` and
+`toEnd`, and Remove; ⌫ and ⌘⌫ remove it and leave its blocks. Declined:
+sloppiness, opacity, arrowhead kinds and dragging an end to another
+block. And an edge is now drawn at the desk's scale, its line and head
+shrinking with the zoom as the blocks it joins do: drawn in screen
+points, a 1.5-point line and a 9-point head stayed that size at 12% and
+outweighed the cards they joined. It never thins past half a point, so
+an overview's lines do not vanish; its label and its selection marks
+stay one size on screen, as all chrome does. The curve's reach is now
+measured on the desk too, so a curve is one shape at every zoom.
+Revision 63 (2026-10-19, asked by Liam): the quick sketch can be moved
+and resized for real. Revision 59 said its edges resized it, but the
+window's edges lie in the clear room kept round the card for its
+shadow, where a press falls through to the app behind, and every time
+it came up it was put back at the screen's foot. Now the card's own
+edges are the grips (`SketchEdges`, under the hosting view): a band six
+points out into that room and three in over the desk, along the sides,
+the bottom, the desk's top beside the tab and the tab's top, a corner
+answering sixteen points along each of its edges, with the system's
+resize pointer; the room in the band is filled with one part in 255 of
+ink so the press is the window's. The tab's sides are no grip. And it
+comes back where it was last put, at the size it was last given, pulled
+inside the screen if it hangs off; only the first time, or when the
+pointer is on another screen, at that screen's foot (`SketchFrame`,
+pure, in the canvas suite; the drag itself is dogfood). The tab's blank
+still moves it.
 
 ## 0. One paragraph
 

@@ -70,7 +70,10 @@ where things stand. It is generic enough for any folder of notes.
   or all the way (⌘[ ⌘], with ⌥ to the back or front),
   duplicate, fold and remove, each shown when the whole selection takes
   it; double-click one, or select it and press ↩, to write in it, and
-  Esc or ⌘↩ to finish with it still selected. A shape is a `text` node with `x-` keys in the `.canvas`
+  Esc or ⌘↩ to finish with it still selected. Click a connection's line
+  to pick it: the panel gives it a colour, a width, solid, dashed or
+  dotted, a curved, straight or elbow route and its arrowheads, and ⌫
+  removes it. A shape is a `text` node with `x-` keys in the `.canvas`
   file, so Obsidian shows a card in its place. Every glyph you can press
   has a tooltip, shown once the pointer has rested on it.
 - Cards move by dragging, resize by any edge or corner, ⇧ keeping the

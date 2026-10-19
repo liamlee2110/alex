@@ -854,8 +854,13 @@ MainActor.assumeIsolated { linkStoreTests() }
     print("\n— Pasted images —")
     let wide = Placement.size(forImage: CGSize(width: 1600, height: 900))
     check(wide == CGSize(width: 320, height: 180), "a picture's card keeps its shape at a card's width", "got \(wide)")
-    check(Placement.size(forImage: CGSize(width: 4000, height: 100)).height == 120, "a strip is kept tall enough to grab")
-    check(Placement.size(forImage: CGSize(width: 1170, height: 2532)).height == 640, "a phone screenshot stops at a page")
+    let strip = Placement.size(forImage: CGSize(width: 4000, height: 100))
+    check(strip == CGSize(width: 640, height: 16), "a strip widens to a page and keeps its shape", "got \(strip)")
+    let phone = Placement.size(forImage: CGSize(width: 1170, height: 2532))
+    check(phone.height == 640 && abs(phone.width / phone.height - 1170 / 2532) < 0.01,
+          "a phone screenshot stops at a page, uncropped", "got \(phone)")
+    let banner = Placement.size(forImage: CGSize(width: 1200, height: 300))
+    check(banner == CGSize(width: 480, height: 120), "a banner widens until it can be grabbed", "got \(banner)")
     check(Placement.size(forImage: .zero) == Placement.cardSize, "a picture with no size gets a card")
     let when = DateComponents(calendar: Calendar.current, year: 2026, month: 9, day: 29, hour: 14, minute: 32).date!
     check(Placement.pastedImageName(at: when) { _ in false } == "Pasted image 2026-09-29 14.32.png", "named for the minute it was pasted")
@@ -882,6 +887,12 @@ MainActor.assumeIsolated { linkStoreTests() }
     check(second?.file == "Pasted image 2026-09-29 14.32 2.png" && second?.id != first?.id,
           "a second paste in the same minute is its own file", "got \(String(describing: second?.file))")
     check(store.document.nodes.filter { $0.file?.hasPrefix("Pasted image") == true }.count == 2, "both are on the canvas")
+
+    let words = store.pasteText("Copied out of a box", size: CGSize(width: 240, height: 40))
+    check(words?.kind == .text && words?.shape == .text && words?.text == "Copied out of a box",
+          "pasted words are a text box holding them", "got \(String(describing: words))")
+    check(words != nil && store.selection == [words!.id], "and selected")
+    check(store.pasteText("  \n ", size: CGSize(width: 240, height: 40)) == nil, "blank words make no box")
 }
 
 MainActor.assumeIsolated { pastedImageTests() }
@@ -944,6 +955,43 @@ do {
     check(near(half, led), "the travel is read in screen points at the drag's zoom", "got \(half)")
     let free = Grip.bottomRight.resizing(frame, by: CGSize(width: 60, height: 0), scale: 1, floor: floor)
     check(free == CGRect(x: 100, y: 100, width: 360, height: 200), "without ⇧ the other axis is left alone", "got \(free)")
+}
+
+print("\n— The quick sketch's edges (revision 63) —")
+do {
+    // A 600 × 400 window, 24 of shadow room round the card, a 34-high tab 200 wide.
+    let bounds = CGRect(x: 0, y: 0, width: 600, height: 400)
+    let tab = CGSize(width: 200, height: 34)
+    func grip(_ x: CGFloat, _ y: CGFloat) -> Grip? {
+        SketchFrame.grip(at: CGPoint(x: x, y: y), in: bounds, margin: 24, tab: tab)
+    }
+    check(grip(22, 200) == .left && grip(578, 200) == .right, "the card's sides, just outside it, are grips")
+    check(grip(26, 200) == .left, "and a sliver inside, over the desk's edge")
+    check(grip(10, 200) == nil && grip(300, 200) == nil, "the shadow's far room and the desk are not")
+    check(grip(300, 22) == .top, "the tab's top resizes the top")
+    check(grip(100, 56) == .top && grip(100, 30) == nil, "beside the tab the desk's own top does, not the air above it")
+    check(grip(198, 40) == nil, "the tab's side is no grip")
+    check(grip(300, 378) == .bottom, "the bottom")
+    check(grip(24, 58) == .topLeft && grip(576, 376) == .bottomRight, "a corner wins where its two edges meet")
+
+    let frame = CGRect(x: 100, y: 100, width: 600, height: 400)
+    let minimum = CGSize(width: 300, height: 200)
+    let taller = SketchFrame.resized(frame, grip: .top, by: CGVector(dx: 0, dy: 50), minimum: minimum)
+    check(taller == CGRect(x: 100, y: 100, width: 600, height: 450), "on screen, y up: the top rises, the bottom stays", "got \(taller)")
+    let lower = SketchFrame.resized(frame, grip: .bottomRight, by: CGVector(dx: 40, dy: -30), minimum: minimum)
+    check(lower == CGRect(x: 100, y: 70, width: 640, height: 430), "the bottom right drops and widens, the top left stays", "got \(lower)")
+    let small = SketchFrame.resized(frame, grip: .left, by: CGVector(dx: 900, dy: 0), minimum: minimum)
+    check(small.width == 300 && small.maxX == frame.maxX, "the least size holds, the right edge put", "got \(small)")
+
+    let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let first = SketchFrame.placed(nil, size: CGSize(width: 600, height: 400), on: screen, margin: 24, gutter: 12)
+    check(first == CGRect(x: 420, y: -12, width: 600, height: 400), "the first time, at the screen's foot in the middle", "got \(first)")
+    let put = CGRect(x: 200, y: 300, width: 500, height: 350)
+    check(SketchFrame.placed(put, size: put.size, on: screen, margin: 24, gutter: 12) == put, "after, where it was put")
+    let off = SketchFrame.placed(CGRect(x: 1100, y: 300, width: 500, height: 350), size: put.size, on: screen, margin: 24, gutter: 12)
+    check(off.maxX == 1452 && off.width == 500, "pulled back on when it hangs off", "got \(off)")
+    let elsewhere = SketchFrame.placed(CGRect(x: 2000, y: 300, width: 500, height: 350), size: put.size, on: screen, margin: 24, gutter: 12)
+    check(elsewhere == CGRect(x: 470, y: -12, width: 500, height: 350), "on another screen, at this one's foot, its size kept", "got \(elsewhere)")
 }
 
 print("\n— Connector sides —")
@@ -1697,6 +1745,82 @@ MainActor.assumeIsolated { penTests() }
 }
 
 MainActor.assumeIsolated { quickSketchTests() }
+
+@MainActor func edgeStyleTests() {
+    print("\n— An edge picked and styled (revision 62) —")
+    let a = CGRect(x: 0, y: 0, width: 100, height: 50), b = CGRect(x: 300, y: 200, width: 100, height: 50)
+    var edge = CanvasEdge(from: "a", to: "b")
+    let curve = EdgeGeometry.path(edge, from: a, to: b)
+    check(curve.route == .curved && curve.start == CGPoint(x: 100, y: 25) && curve.end == CGPoint(x: 300, y: 225),
+          "a curve runs from the right side to the left one")
+    check(curve.distance(to: curve.middle) < 0.5 && curve.distance(to: CGPoint(x: 200, y: -200)) > 100,
+          "a point on the curve is on it, one far off is not")
+    edge.route = .elbow
+    let elbow = EdgeGeometry.path(edge, from: a, to: b)
+    check(elbow.points == [CGPoint(x: 100, y: 25), CGPoint(x: 200, y: 25), CGPoint(x: 200, y: 225), CGPoint(x: 300, y: 225)],
+          "an elbow turns square halfway across", "\(elbow.points)")
+    check(elbow.endTail == CGPoint(x: 200, y: 225), "its head points along the last leg")
+    check(edge.extra["x-route"]?.string == "elbow", "the route is x-route")
+    edge.route = .curved
+    check(edge.extra["x-route"] == nil, "a curve writes no key")
+    edge.route = .straight
+    check(EdgeGeometry.path(edge, from: a, to: b).middle == CGPoint(x: 200, y: 125), "a straight line's label sits halfway")
+
+    let root = scratch.appendingPathComponent("edges")
+    try! fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let defaults = UserDefaults(suiteName: "alex-tests-\(UUID().uuidString)")!
+    let vault = Vault(arguments: [], defaults: defaults)
+    vault.open(root)
+    let store = CanvasStore(vault: vault)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "edges")
+    func tick() { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    let one = store.addSticky(at: CGPoint(x: 0, y: 0))
+    tick()
+    let two = store.addSticky(at: CGPoint(x: 600, y: 0))
+    tick()
+    let link = store.connect(one.id, two.id)
+    tick()
+    let frames = (store.document.node(one.id)!.frame, store.document.node(two.id)!.frame)
+    let onLine = EdgeGeometry.path(link, from: frames.0, to: frames.1).middle
+    check(EdgeGeometry.hit(store.document, at: onLine, reach: 7)?.id == link.id, "a press on the line finds the edge")
+    check(EdgeGeometry.hit(store.document, at: CGPoint(x: onLine.x, y: onLine.y + 40), reach: 7) == nil,
+          "a press beside it does not")
+
+    store.select(one.id)
+    store.selectEdge(link.id)
+    check(store.selection.isEmpty && store.edgeSelection == [link.id], "picking an edge lets the nodes go")
+    store.setEdgeStrokeWidth(store.edgeSelection, .bold)
+    tick()
+    store.setEdgeStrokePattern(store.edgeSelection, .dotted)
+    tick()
+    store.setEdgeColor(store.edgeSelection, "1")
+    tick()
+    store.setEdgeEnds(store.edgeSelection, from: true, to: false)
+    tick()
+    store.setEdgeRoute(store.edgeSelection, .elbow)
+    tick()
+    let styled = store.document.edges.first { $0.id == link.id }!
+    check(styled.strokeWidth == 4 && styled.strokePattern == .dotted && styled.color == "1"
+          && styled.fromEnd == "arrow" && styled.toEnd == "none" && styled.route == .elbow,
+          "width, pattern, colour, heads and route are written", "\(styled.json)")
+    let scope = EdgeScope([styled])
+    check(scope.width == .bold && scope.pattern == .dotted && scope.route == .elbow && scope.fromArrow == true
+          && scope.toArrow == false && scope.colourShared && scope.colour == "1", "and read back for the panel")
+    let reread = try? CanvasDocument.decode(try! store.document.encode())
+    check(reread?.edges.first?.json == styled.json, "the style survives the file")
+    check(EdgeScope([styled, CanvasEdge(from: "x", to: "y")]).width == nil, "two edges that differ agree on nothing")
+    store.select(one.id)
+    check(store.edgeSelection.isEmpty, "picking a node lets the edge go")
+    store.selectEdge(link.id)
+    store.removeSelection()
+    tick()
+    check(store.document.edges.isEmpty && store.document.nodes.count == 2 && store.edgeSelection.isEmpty,
+          "⌫ takes the edge and leaves its blocks")
+}
+
+MainActor.assumeIsolated { edgeStyleTests() }
 
 print("")
 if failures == 0 { print("✓ canvas suite passed") } else { print("✗ \(failures) failure(s)") }
