@@ -5,7 +5,7 @@ import CoreGraphics
 /// relative to that frame. The grips themselves are not drawn — the pointer
 /// over an edge is what says the edge resizes, as it is on a window — but
 /// a selection wears Figma's square at each corner (revision 26), under the
-/// corner grip that answers for it.
+/// corner grip that answers for it, which is centred on it (revision 66).
 ///
 /// Sides are declared before corners: the two share ground at every corner,
 /// later is higher in a `ZStack`, and a corner has to win there or its two
@@ -16,6 +16,22 @@ enum Grip: CaseIterable, Hashable {
 
     /// What a folded card gets, its height not being the grip's to set.
     static let sides: [Grip] = [.left, .right]
+    static let corners: [Grip] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+
+    /// The grips a node selected alone gets (revision 66). A picture, and
+    /// an icon (revision 67), is resized by its corners alone, as on
+    /// Miro's, FigJam's and Freeform's desks: a side could only stretch it.
+    static func grips(for node: CanvasNode) -> [Grip] {
+        node.folded ? sides : node.locksProportions ? corners : allCases
+    }
+
+    /// Whether a resize keeps the frame's proportions (revisions 35 and
+    /// 66): ⇧ locks them, and on a picture or an icon, locked from the start as
+    /// Excalidraw's and tldraw's are, ⇧ frees them. A folded card's height
+    /// is the fold's, so it never follows.
+    static func keepsProportions(_ node: CanvasNode, shift: Bool) -> Bool {
+        !node.folded && (node.locksProportions ? !shift : shift)
+    }
 
     var isCorner: Bool {
         switch self {

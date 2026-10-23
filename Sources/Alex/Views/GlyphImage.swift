@@ -68,6 +68,9 @@ final class LucideSprite {
 
     func has(_ name: String) -> Bool { symbols[name] != nil }
 
+    /// Every icon's name, A to Z: what the icon picker searches.
+    private(set) lazy var names: [String] = symbols.keys.sorted()
+
     func image(_ name: String, box: CGFloat, stroke: CGFloat, filled: Bool) -> NSImage? {
         let key = "\(name) \(box) \(stroke) \(filled)"
         if let hit = cache[key] { return hit }

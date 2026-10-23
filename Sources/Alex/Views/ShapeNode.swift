@@ -60,6 +60,9 @@ struct ShapeNodeView: View {
                     }
                 } else if kind == .freedraw {
                     Path(Freehand.path(Self.points(node.linePoints, in: geo.size))).stroke(stroke, style: style)
+                } else if kind == .icon {
+                    IconMark(name: node.iconName ?? "", size: geo.size, zoom: zoom)
+                        .foregroundStyle(stroke)
                 } else if kind != .text {
                     let path = Self.outline(kind, in: box.insetBy(dx: width / 2, dy: width / 2), radius: radius)
                     path.fill(fill)
@@ -79,7 +82,7 @@ struct ShapeNodeView: View {
     /// line only near their stroke, so a box drawn round cards leaves the
     /// cards and the desk inside it pressable.
     private var takesInside: Bool {
-        if selected || editing || kind == .text { return true }
+        if selected || editing || kind == .text || kind == .icon { return true }
         guard kind != .line, kind != .freedraw else { return false }
         return node.filled || !(node.text ?? "").isEmpty
     }
@@ -217,7 +220,7 @@ struct ShapeNodeView: View {
             path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
             path.closeSubpath()
             return path
-        case .line, .text, .freedraw:
+        case .line, .text, .freedraw, .icon:
             return Path()
         }
     }
@@ -251,6 +254,30 @@ struct ShapeNodeView: View {
     }
 }
 
+/// An icon on the desk (revision 67): Lucide's drawing in the node's
+/// colour, as large as the square its box holds, centred. The sprite is
+/// asked for it at the size it shows on screen, rounded up to a step, so
+/// it stays sharp as the desk zooms without a new picture at every frame
+/// of a pinch.
+struct IconMark: View {
+    let name: String
+    let size: CGSize
+    let zoom: CGFloat
+
+    var body: some View {
+        let side = min(size.width, size.height)
+        let step = Icon.box(Icon.control)
+        let pixels = min(max((side * zoom / step).rounded(.up) * step, step), Icon.deskRaster)
+        if let image = LucideSprite.shared.image(name, box: pixels, stroke: Icon.Weight.regular.stroke, filled: false) {
+            Image(nsImage: image)
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: side, height: side)
+                .frame(width: size.width, height: size.height)
+        }
+    }
+}
+
 /// A shape's name and glyph, for Find on canvas and anything else that
 /// lists it.
 enum ShapeLabel {
@@ -261,6 +288,7 @@ enum ShapeLabel {
             return node.lineToEnd == "arrow" || node.lineFromEnd == "arrow" ? "Arrow" : "Line"
         }
         if node.shape == .freedraw { return "Drawing" }
+        if node.shape == .icon { return "Icon" }
         return node.shape.map(\.rawValue.capitalized) ?? "Shape"
     }
 
@@ -271,6 +299,7 @@ enum ShapeLabel {
         }
         if node.shape == .text { return .type }
         if node.shape == .freedraw { return .pen }
+        if node.shape == .icon { return .shapes }
         return node.shape.flatMap { DrawTool(rawValue: $0.rawValue) }?.symbol ?? DrawTool.rectangle.symbol
     }
 }

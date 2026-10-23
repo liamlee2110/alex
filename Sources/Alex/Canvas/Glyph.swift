@@ -19,6 +19,7 @@ enum Glyph: String, CaseIterable, Sendable {
     case minus
     case maximize = "maximize-2"
     case moveHorizontal = "move-horizontal"
+    case gripHorizontal = "grip-horizontal"
     case zoomIn = "zoom-in"
     case zoomOut = "zoom-out"
 
@@ -56,6 +57,7 @@ enum Glyph: String, CaseIterable, Sendable {
     case fileType = "file-type"
     case bookOpenText = "book-open-text"
     case image
+    case shapes
     case globe
     case codeXml = "code-xml"
     case link
@@ -122,7 +124,8 @@ enum Glyph: String, CaseIterable, Sendable {
 
     // A canvas's own icon (revision 54), picked in the sidebar: the
     // default first, then subjects. `layoutDashboard`, `calendar`,
-    // `music`, `camera`, `codeXml`, `globe` and `folder` are above.
+    // `music`, `camera`, `codeXml`, `globe`, `folder`, `house`, `inbox`
+    // and `listChecks` are above.
     case star
     case heart
     case flag
@@ -145,13 +148,26 @@ enum Glyph: String, CaseIterable, Sendable {
     case sparkles
     case coffee
     case users
+    case zap
+    case trophy
+    case plane
+    case mail
+    case messageCircle = "message-circle"
+    case chartColumn = "chart-column"
+    case wallet
+    case wrench
+    case utensils
+    case dumbbell
+    case gamepad2 = "gamepad-2"
+    case shoppingCart = "shopping-cart"
 
-    /// The icons a canvas can wear, in the picker's order.
+    /// The icons a canvas can wear, in the picker's order: forty-five, so
+    /// the sidebar's default width lays them out in five full lines of nine.
     static let canvasIcons: [Glyph] = [
-        .layoutDashboard, .star, .heart, .flag, .bookmark, .lightbulb,
-        .brain, .bookOpen, .graduationCap, .flaskConical, .rocket, .target,
-        .compass, .map, .briefcase, .calendar, .palette, .penTool,
-        .codeXml, .cpu, .bot, .globe, .leaf, .sparkles,
-        .music, .camera, .coffee, .users, .folder, .fileText,
+        .layoutDashboard, .star, .heart, .flag, .bookmark, .lightbulb, .sparkles, .zap, .trophy,
+        .brain, .bookOpen, .graduationCap, .flaskConical, .target, .rocket, .compass, .map, .plane,
+        .briefcase, .calendar, .listChecks, .inbox, .mail, .messageCircle, .users, .chartColumn, .wallet,
+        .palette, .penTool, .codeXml, .cpu, .bot, .globe, .wrench, .folder, .fileText,
+        .house, .leaf, .music, .camera, .coffee, .utensils, .dumbbell, .gamepad2, .shoppingCart,
     ]
 }

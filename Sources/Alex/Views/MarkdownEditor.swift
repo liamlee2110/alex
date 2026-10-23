@@ -1613,7 +1613,7 @@ struct MarkdownEditor: NSViewRepresentable {
         view.family = family
         view.onFamily = onFamily
         if takesFocus {
-            DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+            view.claimKeys()
         }
         view.delegate = context.coordinator
         view.allowsUndo = true

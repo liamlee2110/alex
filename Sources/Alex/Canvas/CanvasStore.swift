@@ -128,6 +128,9 @@ final class CanvasStore: ObservableObject {
     var linkWords: (String) -> [String] = { _ in [] }
     /// The palette's "Add a link" prompt, also opened by ⌘L.
     @Published var showLinkPrompt = false
+    /// The icon picker (revision 67), opened from Add and the sketch's
+    /// tools: one of Lucide's icons placed on the desk.
+    @Published var showIconPrompt = false
     /// The workspace menu's "New workspace…" prompt, over the sidebar's foot.
     @Published var showNewWorkspace = false
     /// Settings, a sheet centred over the desk (revision 41): the workspace
@@ -1151,6 +1154,21 @@ final class CanvasStore: ObservableObject {
         return node
     }
 
+    /// One of Lucide's icons (revision 67), in a free spot beside the
+    /// middle of the view, selected.
+    @discardableResult
+    func addIcon(_ name: String) -> CanvasNode {
+        let size = ShapeMetrics.iconSize
+        let centre = viewport.toWorld(CGPoint(x: viewSize.width / 2, y: viewSize.height / 2))
+        let origin = Placement.freeSlot(for: size, in: document,
+                                        near: CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2,
+                                                     width: size.width, height: size.height))
+        let node = CanvasNode.icon(name, frame: CGRect(origin: origin, size: size))
+        add(node, name: "Add icon")
+        select(node.id)
+        return node
+    }
+
     /// A link card for a web address. At a point, that point is its
     /// top-left, the way a dropped file lands; without one it takes a free
     /// spot beside the middle of the view. Not a web address, no card.
@@ -1357,6 +1375,41 @@ final class CanvasStore: ObservableObject {
         defaults.set(recents, forKey: recentsKey)
         trouble = nil
         return nil
+    }
+
+    /// Deletes a canvas (revision 65): its file goes to the system Trash,
+    /// where Finder's Put Back is the undo. The files its cards show
+    /// stay: a canvas is a layout, not what it lays out. The open canvas
+    /// deleted, its neighbour in the list opens — the one after it, else
+    /// the last — and the last canvas gone leaves the empty desk that
+    /// asks for the first. What the app remembered for it is forgotten.
+    func deleteCanvas(_ path: String) {
+        let list = canvases
+        do {
+            try vault.trash(path)
+        } catch {
+            trouble = "Couldn't delete \(canvasName(path)): \(error.localizedDescription)"
+            return
+        }
+        if renaming == path { renaming = nil }
+        if lookPicking == path { lookPicking = nil }
+        if path == canvasPath {
+            let left = canvases
+            let i = list.firstIndex(of: path) ?? left.count
+            if let next = left.indices.contains(i) ? left[i] : left.last {
+                openCanvas(at: next)
+            } else {
+                closeCanvas()
+            }
+        }
+        // After the switch: opening or closing saves the viewport of the
+        // canvas that was open, which would bring the key back.
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "viewportCentre:" + (vault.root?.path ?? "") + ":" + path)
+        looks[path] = nil
+        recents.removeAll { $0 == path }
+        defaults.set(recents, forKey: recentsKey)
+        trouble = nil
     }
 
     struct CanvasLook: Equatable {

@@ -98,18 +98,32 @@ final class SketchHotkey: ObservableObject {
 
 /// A borderless panel refuses key status, and a desk that cannot be key
 /// takes no keys (Donna's sharp edge). ⌘N and ⌘W are the sketch's own,
-/// ahead of the menu bar's New note and Close.
+/// ahead of the menu bar's New note and Close, and so are the zoom's keys
+/// (revision 66): the menu bar's View items act on the focused scene's
+/// store, the window's, so ⌘= zoomed the window hidden behind the sketch.
 final class SketchPanel: NSPanel {
     var onNew: (() -> Void)?
     var onClose: (() -> Void)?
+    var store: CanvasStore?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if flags == .command, event.charactersIgnoringModifiers == "n" { onNew?(); return true }
-        if flags == .command, event.charactersIgnoringModifiers == "w" { onClose?(); return true }
+        let key = event.charactersIgnoringModifiers
+        if flags == .command, key == "n" { onNew?(); return true }
+        if flags == .command, key == "w" { onClose?(); return true }
+        // ⌘= and ⌘+ (⇧ on the same key, or the keypad's), as Figma reads them.
+        if let store, flags.subtracting([.shift, .numericPad]) == .command {
+            switch key {
+            case "=", "+": store.zoomIn(); return true
+            case "-", "_": store.zoomOut(); return true
+            case "0": store.actualSize(); return true
+            case "1": store.fit(); return true
+            default: break
+            }
+        }
         return super.performKeyEquivalent(with: event)
     }
 
@@ -308,6 +322,7 @@ final class QuickSketch: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.onNew = { [weak model] in model?.sketch.newSketch() }
         panel.onClose = { [weak self] in self?.hide() }
+        panel.store = model.sketch
         let root = QuickSketchView(store: model.sketch,
                                    onClose: { [weak self] in self?.hide() },
                                    onOpenInWindow: { [weak self, weak model] path in

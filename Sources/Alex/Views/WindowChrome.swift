@@ -226,7 +226,9 @@ final class ChromeView: NSView {
                                                  timestamp: ProcessInfo.processInfo.systemUptime,
                                                  windowNumber: window.windowNumber, context: nil,
                                                  eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
-            NSApp.sendEvent(event)
+            // Posted, not sent, so the app's event monitors see it as
+            // they see a real press (`SecondaryClick`).
+            NSApp.postEvent(event, atStart: false)
         }
         // A view that also takes a double click answers a beat later.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

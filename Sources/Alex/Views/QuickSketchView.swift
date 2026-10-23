@@ -3,8 +3,10 @@ import SwiftUI
 /// The quick sketch's window (revision 59): a desk and nothing on it, and
 /// above it, not on it, a tab rising out of the top edge, centred, the
 /// shape of a folder's tab. The tab says which canvas this is and switches
-/// it; its blank moves the window. The desk and the tab are one outline,
-/// one fill and one hairline, so they read as one sheet of card.
+/// it, and it is the handle that moves the window (revision 64): wide
+/// enough to hold, the name centred in it, blank either side. The desk and
+/// the tab are one outline, one fill and one hairline, so they read as one
+/// sheet of card.
 struct QuickSketchView: View {
     @ObservedObject var store: CanvasStore
     @EnvironmentObject private var vault: Vault
@@ -63,20 +65,38 @@ struct QuickSketchView: View {
 
     // MARK: - The tab
 
-    /// The close glyph at its leading edge, then the canvas's name, its
-    /// menu.
+    /// The handle (revisions 64 and 66), Safari's tab: the canvas's name
+    /// and its menu centred, the close glyph at the leading edge, the
+    /// grip at the trailing edge across from it, and either side of the
+    /// name a shoulder of blank wide enough to hold. Everything in the
+    /// tab but the name and the close glyph moves the window, under the
+    /// open hand. The shoulders are padding inside the tab's width, so a
+    /// long name truncates against them rather than taking them; each is
+    /// measured from the glyph at its end, not the edge.
     private var tab: some View {
-        HStack(spacing: Space.xs) {
-            IconButton(symbol: .x, label: "Close", shortcut: "esc", size: .small) { onClose() }
-            canvasButton
-        }
-        .padding(.horizontal, Space.s)
-        .frame(minWidth: Shell.sketchTabMin, maxWidth: Shell.sketchTabMax)
-        .fixedSize()
-        .frame(height: Shell.sketchTab)
-        .windowDragArea()
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabWidth = $0; onTabWidth?($0) }
-        .frame(maxWidth: .infinity)
+        let end = IconButton.Size.small.side.width + Space.s
+        return canvasButton
+            .padding(.horizontal, end + Shell.sketchTabShoulder)
+            .frame(minWidth: Shell.sketchTabMin, maxWidth: Shell.sketchTabMax)
+            .fixedSize()
+            .frame(height: Shell.sketchTab)
+            .overlay(alignment: .leading) {
+                IconButton(symbol: .x, label: "Close", shortcut: "esc", size: .small) { onClose() }
+                    .padding(.leading, Space.s)
+            }
+            .overlay(alignment: .trailing) {
+                // Held, not pressed: a mark on the handle, so the mover
+                // under it takes the press.
+                GlyphImage(.gripHorizontal)
+                    .foregroundStyle(Ink.muted)
+                    .frame(width: IconButton.Size.small.side.width, height: IconButton.Size.small.side.height)
+                    .padding(.trailing, Space.s)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .background(WindowMover())
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabWidth = $0; onTabWidth?($0) }
+            .frame(maxWidth: .infinity)
     }
 
     private var canvasButton: some View {
@@ -122,6 +142,26 @@ struct QuickSketchView: View {
             MenuItem.divider
             MenuItem("Open in Alex", symbol: .squareArrowOutUpRight) { onOpenInWindow(store.canvasPath) }
         }
+    }
+}
+
+/// What moves the sketch (revision 66): AppKit's own window drag under the
+/// tab, taking the first press even while the sketch is not key, with the
+/// open hand over it. SwiftUI's `WindowDragGesture` lost a press now and
+/// then on this non-activating panel, and wore no pointer at all.
+struct WindowMover: NSViewRepresentable {
+    func makeNSView(context: Context) -> MoverView { MoverView() }
+    func updateNSView(_ view: MoverView, context: Context) {}
+
+    final class MoverView: NSView {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var mouseDownCanMoveWindow: Bool { true }
+        override func mouseDown(with event: NSEvent) {
+            NSCursor.closedHand.push()
+            window?.performDrag(with: event)
+            NSCursor.pop()
+        }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
     }
 }
 

@@ -344,6 +344,22 @@ final class Vault: ObservableObject {
         reload()
     }
 
+    /// A file moved to the system Trash (revision 65): the nearest undo
+    /// to a delete, Finder's Put Back, where git is the far one (D7).
+    /// Nothing in the vault is ever destroyed by the app. Hidden from the
+    /// watcher like a move. Returns where the file now is.
+    @discardableResult
+    func trash(_ path: String) throws -> URL {
+        guard let root else { throw VaultError.noVault }
+        let source = try VaultPath.resolve(path, in: root)
+        ownWrites[source.resolvingSymlinksInPath().path] = .absent
+        defer { forgetLookups() }
+        var landed: NSURL?
+        try FileManager.default.trashItem(at: source, resultingItemURL: &landed)
+        reload()
+        return (landed as URL?) ?? source
+    }
+
     /// The vault-relative path of an absolute URL, or nil if it is outside.
     func relativePath(of url: URL) -> String? {
         guard let root else { return nil }

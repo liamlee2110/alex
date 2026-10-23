@@ -105,7 +105,8 @@ struct CanvasView: View {
                             && point.x <= size.width - insets.trailing
                     },
                     onScroll: { delta, point, modifiers in
-                        if modifiers.contains(.command) {
+                        // ⌘ or ⌃ with the wheel zooms, as in Figma and a browser.
+                        if modifiers.contains(.command) || modifiers.contains(.control) {
                             store.viewport.zoom(by: exp(delta.y * 0.01), around: point)
                         } else {
                             store.viewport.pan(by: delta)
@@ -158,10 +159,15 @@ struct CanvasView: View {
                             LinkPrompt(store: store)
                                 .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
                         }
+                        if store.showIconPrompt {
+                            IconPrompt(store: store)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
+                        }
                         ToolCorner(store: store)
                     }
                     .padding(Shell.gutter)
                     .animation(Motion.quick, value: store.showLinkPrompt)
+                    .animation(Motion.quick, value: store.showIconPrompt)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 } else {
                 ZStack(alignment: .bottom) {
@@ -174,11 +180,16 @@ struct CanvasView: View {
                             LinkPrompt(store: store)
                                 .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
                         }
+                        if store.showIconPrompt {
+                            IconPrompt(store: store)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                        }
                         ToolPalette(store: store)
                             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { paletteWidth = $0 }
                     }
                     .padding(.bottom, Space.l)
                     .animation(Motion.quick, value: store.showLinkPrompt)
+                    .animation(Motion.quick, value: store.showIconPrompt)
                     .offset(x: paletteShift(in: size.width, insets: insets))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -760,13 +771,14 @@ struct CanvasView: View {
     }
 
     /// The frame a resize under way gives `node`, from the grip's travel at
-    /// the zoom it was dragged at, in proportion while ⇧ is down; nil when
-    /// the node is not the one being resized. A folded card's height is
-    /// the fold's, so ⇧ leaves it alone.
+    /// the zoom it was dragged at, in proportion while ⇧ is down — or, for
+    /// a picture, until it is (`Grip.keepsProportions`); nil when the node
+    /// is not the one being resized.
     private func resizedFrame(_ node: CanvasNode) -> CGRect? {
         guard let resize, resize.id == node.id else { return nil }
         return resize.grip.resizing(node.frame, by: resize.translation, scale: resize.scale,
-                                    floor: Grip.floor(for: node), proportional: shiftHeld && !node.folded,
+                                    floor: Grip.floor(for: node),
+                                    proportional: Grip.keepsProportions(node, shift: shiftHeld),
                                     fromCentre: optionHeld)
     }
 
@@ -932,7 +944,10 @@ struct CanvasView: View {
                 } else if !store.selection.contains(node.id) {
                     store.select(node.id)
                 }
-                focused = true
+                // A press in the box being written in is the editor's:
+                // taking the keys for the desk greyed its selection and
+                // left typing nowhere.
+                if editingNode != node.id { focused = true }
             }
             .onEnded { value in
                 let added = pressAdded
@@ -1100,13 +1115,32 @@ struct CanvasView: View {
             if alone {
                 if !node.folded { cornerMarks(vp: vp) }
                 resizeGrips(for: node, vp: vp)
+                if let live = resizedFrame(node) { sizeReadout(live.size, vp: vp) }
             }
         }
     }
 
+    /// The size a resize is making, Figma's: a blue capsule under the node,
+    /// one size on screen, in whole desk points, gone when the drag ends.
+    private func sizeReadout(_ size: CGSize, vp: Viewport) -> some View {
+        Text("\(Int(size.width.rounded())) × \(Int(size.height.rounded()))")
+            .font(Typography.micro)
+            .monospacedDigit()
+            .foregroundStyle(Accent.onSolid)
+            .padding(.horizontal, Space.s)
+            .padding(.vertical, Space.xs / 2)
+            .background(Capsule().fill(Accent.solid))
+            .fixedSize()
+            .scaleEffect(1 / vp.scale, anchor: .top)
+            // Its top a gap under the node's bottom edge.
+            .alignmentGuide(.bottom) { $0[.top] - Handle.readoutGap / vp.scale }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .allowsHitTesting(false)
+    }
+
     private func cornerMarks(vp: Viewport) -> some View {
         ZStack {
-            ForEach([Grip.topLeft, .topRight, .bottomLeft, .bottomRight], id: \.self) { corner in
+            ForEach(Grip.corners, id: \.self) { corner in
                 Rectangle()
                     .fill(Ink.card)
                     .overlay(Rectangle().strokeBorder(Accent.text, lineWidth: 1))
@@ -1156,21 +1190,23 @@ struct CanvasView: View {
                                outside: Handle.connectorOutside / vp.scale)
     }
 
-    /// Every grip a node gets. A folded card keeps the two side bands,
-    /// because its height is the fold's to set and not the grip's.
+    /// Every grip a node gets (`Grip.grips`). A folded card keeps the two
+    /// side bands, because its height is the fold's to set and not the
+    /// grip's; a picture keeps its four corners.
     private func resizeGrips(for node: CanvasNode, vp: Viewport) -> some View {
-        ForEach(node.folded ? Grip.sides : Grip.allCases, id: \.self) { grip in
+        ForEach(Grip.grips(for: node), id: \.self) { grip in
             resizeGrip(grip, for: node, vp: vp)
         }
     }
 
     /// One grip, constant on screen whatever the zoom, and drawn as nothing.
-    /// A corner is a square of edge where two bands meet and a side is the
-    /// run between them, so the one expression sizes all eight. Nothing is
-    /// drawn because nothing needs to be: the pointer over an edge is what
-    /// says the edge resizes, the way it does on a window.
+    /// A corner is a square centred on the corner, over its mark, and a
+    /// side a band centred on the edge, running its length under the
+    /// corners (revision 66). Nothing is drawn for a side because nothing
+    /// needs to be: the pointer over an edge is what says the edge
+    /// resizes, the way it does on a window.
     private func resizeGrip(_ grip: Grip, for node: CanvasNode, vp: Viewport) -> some View {
-        let reach = Self.grip / vp.scale
+        let reach = (grip.isCorner ? Handle.cornerGrip : Handle.edgeGrip) / vp.scale
         // The pointer, the cursor and the gesture belong to the strip alone,
         // so they go on before it is placed: after the full-size frame they
         // would answer anywhere over the node, and a press in its middle
@@ -1192,16 +1228,10 @@ struct CanvasView: View {
                         if let frame = resizedFrame(node) { store.setFrame(node.id, frame) }
                         resize = nil
                     })
-            .offset(x: grip.normal.x * Self.gripStandsOut / vp.scale,
-                    y: grip.normal.y * Self.gripStandsOut / vp.scale)
+            // Half of it out over the desk: centred on the edge.
+            .offset(x: grip.normal.x * reach / 2, y: grip.normal.y * reach / 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: grip.alignment)
     }
-
-    /// How far a grip reaches on screen, and how far out of the node it is
-    /// nudged, so two thirds of it lie over the desk rather than over the
-    /// card's own content, where a press means something else.
-    private static let grip: CGFloat = 12
-    private static let gripStandsOut: CGFloat = 2
 
     private func connector(for node: CanvasNode, side: CanvasSide, vp: Viewport) -> some View {
         let alignment: Alignment

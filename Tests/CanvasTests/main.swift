@@ -330,9 +330,31 @@ func storeTests() {
     check(store.renameCanvas("Ideas.canvas", to: "Later") == nil
           && store.look(for: "Later.canvas") == CanvasStore.CanvasLook(icon: "rocket", color: "4"),
           "the look travels with the file")
-    for name in ["Later.canvas", "robotics.canvas"] {
-        try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
-    }
+
+    print("\n— Delete (revision 65) —")
+    try! "scratch".write(to: root.appendingPathComponent("scratch.md"), atomically: true, encoding: .utf8)
+    let trashed = try? vault.trash("scratch.md")
+    check(trashed != nil && fm.fileExists(atPath: trashed?.path ?? "-")
+          && !fm.fileExists(atPath: root.appendingPathComponent("scratch.md").path) && !vault.exists("scratch.md"),
+          "a trashed file leaves the vault for the Trash, where it still is", "landed at \(String(describing: trashed))")
+    if let trashed { try? fm.removeItem(at: trashed) }
+    store.noteRecent("Later.canvas")
+    store.deleteCanvas("Later.canvas")
+    check(!fm.fileExists(atPath: root.appendingPathComponent("Later.canvas").path)
+          && !store.canvases.contains("Later.canvas") && store.canvasPath == "robotics.canvas"
+          && !store.recents.contains("Later.canvas") && store.trouble == nil,
+          "deleting another canvas takes its file, its row and its memory, and leaves the open one",
+          "got \(store.canvases), open \(store.canvasPath)")
+    store.openCanvas(at: "notes/board.canvas")
+    store.deleteCanvas("notes/board.canvas")
+    check(store.isOpen && store.canvasPath == "robotics.canvas"
+          && !fm.fileExists(atPath: root.appendingPathComponent("notes/board.canvas").path),
+          "deleting the open canvas opens the one after it", "got \(store.canvasPath)")
+    store.deleteCanvas("notes/board.canvas")
+    check(store.trouble != nil && store.canvasPath == "robotics.canvas", "deleting what is not there is said, not done",
+          String(describing: store.trouble))
+
+    try? FileManager.default.removeItem(at: root.appendingPathComponent("robotics.canvas"))
     vault.reload()
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     check(store.canvasPath != "robotics.canvas" && store.isOpen,
@@ -955,6 +977,21 @@ do {
     check(near(half, led), "the travel is read in screen points at the drag's zoom", "got \(half)")
     let free = Grip.bottomRight.resizing(frame, by: CGSize(width: 60, height: 0), scale: 1, floor: floor)
     check(free == CGRect(x: 100, y: 100, width: 360, height: 200), "without ⇧ the other axis is left alone", "got \(free)")
+
+    // A picture (revision 66): its corners only, its proportions kept
+    // until ⇧ frees them; everything else the other way round.
+    let picture = CanvasNode(kind: .file, frame: frame, file: "look.png")
+    let note = CanvasNode(kind: .file, frame: frame, file: "note.md")
+    var folded = note
+    folded.folded = true
+    check(Grip.grips(for: picture) == Grip.corners, "a picture is resized by its four corners alone")
+    check(Grip.grips(for: note) == Grip.allCases, "a note keeps its sides and corners")
+    check(Grip.grips(for: folded) == Grip.sides, "a folded card keeps its two sides")
+    check(Grip.keepsProportions(picture, shift: false) && !Grip.keepsProportions(picture, shift: true),
+          "a picture keeps its proportions, and ⇧ frees them")
+    check(!Grip.keepsProportions(note, shift: false) && Grip.keepsProportions(note, shift: true),
+          "a note is free, and ⇧ locks it")
+    check(!Grip.keepsProportions(folded, shift: true), "a folded card's height is the fold's")
 }
 
 print("\n— The quick sketch's edges (revision 63) —")
@@ -1742,6 +1779,18 @@ MainActor.assumeIsolated { penTests() }
     check(reopened.canvasPath == second, "the sketch reopens the last canvas it showed", reopened.canvasPath)
     check(sketch.recentlyChangedCanvases(limit: 1) == [second!], "the tab offers the canvas last changed first",
           "\(sketch.recentlyChangedCanvases(limit: 3))")
+
+    print("\n— Delete across the two desks (revision 65) —")
+    window.deleteCanvas(second!)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    check(window.isOpen && window.canvasPath == first && !sketch.isOpen,
+          "the sidebar deleting the sketch's canvas: the window moves on, the sketch's desk empties",
+          "window \(window.canvasPath), sketch \(sketch.canvasPath)")
+    window.deleteCanvas(first!)
+    window.deleteCanvas("Plans.canvas")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    check(!window.isOpen && window.canvasPath == "" && window.canvases.isEmpty && window.trouble == nil,
+          "the last canvas deleted leaves the empty desk", "open \(window.canvasPath), \(window.canvases)")
 }
 
 MainActor.assumeIsolated { quickSketchTests() }
@@ -1821,6 +1870,36 @@ MainActor.assumeIsolated { quickSketchTests() }
 }
 
 MainActor.assumeIsolated { edgeStyleTests() }
+
+@MainActor func iconTests() {
+    print("\n— Icons on the desk (revision 67) —")
+    let mark = CanvasNode.icon("user", frame: CGRect(x: 0, y: 0, width: 64, height: 64))
+    check(mark.kind == .text && mark.isIcon && mark.iconName == "user", "an icon is a text node with x-shape icon and x-icon")
+    check(!mark.takesWords && !mark.isStroke, "it takes no words")
+    check(Grip.grips(for: mark) == Grip.corners && Grip.keepsProportions(mark, shift: false)
+          && !Grip.keepsProportions(mark, shift: true), "it resizes by its corners, proportions kept unless ⇧")
+    let scope = StyleScope([mark])
+    check(!scope.fill && !scope.stroke && !scope.font && !scope.size && !scope.align && scope.duplicable && scope.order,
+          "it is styled by colour alone, and duplicates")
+
+    let root = scratch.appendingPathComponent("icons")
+    try! fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let defaults = UserDefaults(suiteName: "alex-tests-\(UUID().uuidString)")!
+    let vault = Vault(arguments: [], defaults: defaults)
+    vault.open(root)
+    let store = CanvasStore(vault: vault)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    store.viewSize = CGSize(width: 1200, height: 800)
+    store.newCanvas(named: "Icons")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    let added = store.addIcon("users")
+    check(store.selection == [added.id] && added.frame.size == ShapeMetrics.iconSize, "the icon lands selected, at its size")
+    let onDisk = (try? Data(contentsOf: root.appendingPathComponent(store.canvasPath))).flatMap { try? CanvasDocument.decode($0) }
+    check(onDisk?.node(added.id)?.iconName == "users" && onDisk?.node(added.id)?.shape == .icon,
+          "it is on disk as x-shape icon, x-icon users")
+}
+
+MainActor.assumeIsolated { iconTests() }
 
 print("")
 if failures == 0 { print("✓ canvas suite passed") } else { print("✗ \(failures) failure(s)") }

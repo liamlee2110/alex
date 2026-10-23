@@ -6,9 +6,10 @@ import CoreGraphics
 /// nothing in the file is Alex's alone but the `x-` keys (D4). `text` is
 /// the Text tool's box: words on the desk with no outline and no paper.
 /// `freedraw` is a stroke drawn by hand with the Draw tool (revision 58),
-/// Excalidraw's name for it.
+/// Excalidraw's name for it. `icon` is one of Lucide's icons placed on
+/// the desk (revision 67), named under `x-icon`.
 enum ShapeKind: String, CaseIterable {
-    case rectangle, ellipse, diamond, line, text, freedraw
+    case rectangle, ellipse, diamond, line, text, freedraw, icon
 }
 
 /// What the palette's Shapes menu offers, in its order: the four kinds,
@@ -198,6 +199,9 @@ enum ShapeMetrics {
     static let defaultSize = CGSize(width: 160, height: 100)
     /// The line a click without a drag makes, running right from the click.
     static let defaultLineLength: CGFloat = 160
+    /// An icon's box as it lands (revision 67): a square that reads as a
+    /// mark beside a sticky, not as a picture.
+    static let iconSize = CGSize(width: 64, height: 64)
     /// The text box a click without a drag makes, its top-left at the click:
     /// one line of body type and its rim.
     static let defaultTextSize = CGSize(width: 240, height: 40)
@@ -272,17 +276,17 @@ struct StyleScope: Equatable {
         }
         colour = nodes.first?.color
         colourShared = all { $0.color == nodes.first?.color }
-        fill = all { $0.shape != nil && $0.shape != .text && !$0.isStroke }
+        fill = all { $0.shape != nil && $0.shape != .text && !$0.isStroke && !$0.isIcon }
         filled = fill ? shared(\.filled) : nil
-        stroke = all { $0.shape != nil && $0.shape != .text }
+        stroke = all { $0.shape != nil && $0.shape != .text && !$0.isIcon }
         pattern = stroke ? shared(\.strokePattern) : nil
         width = stroke ? shared { StrokeWidth(points: $0.strokeWidth) } : nil
         arrowheads = all { $0.shape == .line }
         fromArrow = arrowheads ? shared { $0.lineFromEnd == "arrow" } : nil
         toArrow = arrowheads ? shared { $0.lineToEnd == "arrow" } : nil
-        font = all { ($0.writtenOnDesk && !$0.isStroke) || ($0.kind == .file && $0.file?.hasSuffix(".md") == true) }
+        font = all { ($0.takesWords && !$0.isStroke) || ($0.kind == .file && $0.file?.hasSuffix(".md") == true) }
         family = font ? shared(\.fontFamily) : nil
-        size = all { $0.writtenOnDesk && !$0.isStroke }
+        size = all { $0.takesWords && !$0.isStroke }
         textSize = size ? shared { TextSize(points: $0.fontSize) } : nil
         align = size
         textAlign = align ? shared(\.textAlign) : nil
@@ -339,8 +343,22 @@ extension CanvasNode {
     var isStroke: Bool { shape == .line || shape == .freedraw }
 
     /// What a double-click or ↩ writes in: words on the desk, but not on
-    /// a stroke drawn by hand, which is only ink (revision 58).
-    var takesWords: Bool { writtenOnDesk && shape != .freedraw }
+    /// a stroke drawn by hand, which is only ink (revision 58), nor on an
+    /// icon, which is only its mark (revision 67).
+    var takesWords: Bool { writtenOnDesk && shape != .freedraw && shape != .icon }
+
+    /// One of Lucide's icons on the desk (revision 67).
+    var isIcon: Bool { shape == .icon }
+
+    /// The icon's Lucide name, under `x-icon`.
+    var iconName: String? {
+        get { extra["x-icon"]?.string }
+        set { extra["x-icon"] = newValue.map { .string($0) } }
+    }
+
+    /// A picture or an icon: it is resized by its corners alone, its
+    /// proportions kept (revisions 66 and 67).
+    var locksProportions: Bool { isImage || isIcon }
 
     /// A picture's card: the picture is the whole of it, so it neither
     /// folds to a title row nor opens in the detail sheet (revision 45).
@@ -470,6 +488,13 @@ extension CanvasNode {
     static func line(from a: CGPoint, to b: CGPoint, arrow: Bool, color: String? = nil) -> CanvasNode {
         var node = line(through: [a, b], color: color)
         if arrow { node.lineToEnd = "arrow" }
+        return node
+    }
+
+    /// One of Lucide's icons, `name`, filling `frame` (revision 67).
+    static func icon(_ name: String, frame: CGRect, color: String? = nil) -> CanvasNode {
+        var node = shape(.icon, frame: frame, color: color)
+        node.iconName = name
         return node
     }
 

@@ -54,6 +54,7 @@ struct ToolPalette: View {
                 MenuItem("New note", symbol: .fileText, shortcut: "⌘N") { store.newNote() }
                 MenuItem("Import files…", symbol: .import_) { importFiles() }
                 MenuItem("Add a link…", symbol: .link, shortcut: "⌘L") { store.showLinkPrompt = true }
+                MenuItem("Add an icon…", symbol: .shapes) { store.showIconPrompt = true }
             }
         }
         .floatingBar()
@@ -109,7 +110,88 @@ struct ToolCorner: View {
             MenuItem.divider
             MenuItem("New note", symbol: .fileText) { store.newNote() }
             MenuItem("Add a link…", symbol: .link) { store.showLinkPrompt = true }
+            MenuItem("Add an icon…", symbol: .shapes) { store.showIconPrompt = true }
         }
+    }
+}
+
+/// The icon picker (revision 67): any of Lucide's icons placed on the
+/// desk, a mark beside the stickies — a person by a name, a flag by a
+/// goal. The common ones first, the canvases' own; typing searches all
+/// of Lucide by name, and ↩ takes the first match. A card floating where
+/// the link prompt floats, for the same reason.
+struct IconPrompt: View {
+    @ObservedObject var store: CanvasStore
+    @State private var query = ""
+    @FocusState private var focused: Bool
+
+    private let columns = [GridItem(.adaptive(minimum: IconButton.Size.bar.side.width), spacing: Space.xs)]
+
+    private var matches: [String] {
+        let words = query.lowercased().split(whereSeparator: { $0 == " " || $0 == "-" }).map(String.init)
+        guard !words.isEmpty else { return Glyph.canvasIcons.map(\.rawValue) }
+        let found = LucideSprite.shared.names.filter { name in words.allSatisfy { name.contains($0) } }
+        // A name that starts with what was typed before one that only
+        // holds it: "user" puts `user` and `users` before `circle-user`.
+        let first = words[0]
+        return found.filter { $0.hasPrefix(first) }.sorted { $0.count < $1.count }
+            + found.filter { !$0.hasPrefix(first) }
+    }
+
+    var body: some View {
+        let shown = matches
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack {
+                Text("Add an icon")
+                    .font(Typography.title)
+                Spacer()
+                Button("Cancel") { store.showIconPrompt = false }
+                    .buttonStyle(.outline)
+                    .keyboardShortcut(.cancelAction)
+            }
+            TextField("Search icons", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .font(Typography.body)
+                .focused($focused)
+                .onSubmit { if let first = shown.first { add(first) } }
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: Space.xs) {
+                    ForEach(shown, id: \.self) { name in
+                        IconButton(symbol: .shapes, label: IconPrompt.spoken(name), size: .bar,
+                                   lucide: name) { add(name) }
+                    }
+                }
+            }
+            .frame(height: Shell.iconPickerHeight)
+            .overlay {
+                if shown.isEmpty {
+                    Text("No icon is called “\(query)”.")
+                        .font(Typography.meta)
+                        .foregroundStyle(Ink.muted)
+                }
+            }
+        }
+        .padding(Space.l)
+        .frame(width: 380)
+        .background(RoundedRectangle(cornerRadius: Radius.well).fill(Ink.float))
+        .overlay(RoundedRectangle(cornerRadius: Radius.well).strokeBorder(Ink.hairline, lineWidth: 1))
+        .elevation(.raised)
+        .onExitCommand { store.showIconPrompt = false }
+        .onAppear {
+            if let seeded = Launch.value(after: "--icon-prompt"), seeded != "on" { query = seeded }
+            focused = true
+        }
+    }
+
+    private func add(_ name: String) {
+        store.addIcon(name)
+        store.showIconPrompt = false
+    }
+
+    /// An icon as a person says it: `circle-user` is "Circle user".
+    static func spoken(_ name: String) -> String {
+        let words = name.replacingOccurrences(of: "-", with: " ")
+        return words.prefix(1).capitalized + words.dropFirst()
     }
 }
 
@@ -192,6 +274,8 @@ struct CanvasMenu: View {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
             }
+            MenuItem.divider
+            MenuItem("Delete", enabled: store.isOpen) { store.deleteCanvas(store.canvasPath) }
         }
     }
 }

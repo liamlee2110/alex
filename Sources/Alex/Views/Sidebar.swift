@@ -295,8 +295,9 @@ struct DoorDot: View {
 /// square (no Home since revision 54). At the head, find, a new canvas and
 /// the open canvas's own verbs behind `•••` (the "N not placed" capsule of
 /// revision 19 left in revision 44). Each row wears its canvas's icon in
-/// its colour; a double-click or Rename makes its name a field, and its
-/// icon and colour are picked under it.
+/// its colour; a double-click or Rename makes its name a field, its
+/// icon and colour are picked under it, and Delete moves its file to the
+/// Trash (revision 65).
 /// It slides with its workspace.
 struct CanvasList: View {
     @ObservedObject var store: CanvasStore
@@ -343,7 +344,8 @@ struct CanvasList: View {
 }
 
 /// The verbs on one canvas: its row's right-click menu, and the open
-/// one's under the Canvases `•••`.
+/// one's under the Canvases `•••`. Delete, last and alone (revision 65),
+/// moves the canvas file to the Trash, where Put Back is the undo.
 @MainActor
 enum CanvasVerbs {
     @MenuBuilder
@@ -356,6 +358,8 @@ enum CanvasVerbs {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
         }
+        MenuItem.divider
+        MenuItem("Delete") { store.deleteCanvas(path) }
     }
 }
 
@@ -384,7 +388,7 @@ struct CanvasRow: View {
             // A Button's own action fires at once; the double-click
             // beside it renames without holding the single click back.
             .simultaneousGesture(TapGesture(count: 2).onEnded { store.renaming = path })
-            .popupMenu { CanvasVerbs.items(for: path, store: store) }
+            .rowMenu { CanvasVerbs.items(for: path, store: store) }
         }
     }
 
@@ -462,13 +466,16 @@ private struct CanvasNameField: View {
 }
 
 /// A canvas's icon and colour (revision 54), picked in a card under its
-/// row: the seven colours, then the icons, each in the colour picked. A
-/// pick is written to the canvas file at once; Done or Esc closes it.
+/// row: the colours with Done at their end, then the icons, each in the
+/// colour picked, as many to a line as the sidebar is wide. A pick is
+/// written to the canvas file at once; Done or Esc closes it.
 struct CanvasLookPicker: View {
     @ObservedObject var store: CanvasStore
     let path: String
 
-    private let columns = Array(repeating: GridItem(.fixed(IconButton.Size.small.side.width), spacing: Space.xs), count: 6)
+    // As many icons to a line as fit, the line's slack shared between them,
+    // so a wide sidebar takes fewer lines rather than a blank margin.
+    private let columns = [GridItem(.adaptive(minimum: IconButton.Size.small.side.width), spacing: Space.xs)]
 
     var body: some View {
         let look = store.look(for: path)
@@ -482,8 +489,12 @@ struct CanvasLookPicker: View {
                         store.setLook(next, for: path)
                     }
                 }
+                Spacer(minLength: Space.s)
+                Button("Done") { store.lookPicking = nil }
+                    .buttonStyle(.outline)
+                    .keyboardShortcut(.cancelAction)
             }
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Space.xs) {
+            LazyVGrid(columns: columns, spacing: Space.xs) {
                 ForEach(Glyph.canvasIcons, id: \.self) { glyph in
                     IconButton(symbol: glyph, label: CanvasLookPicker.name(of: glyph), size: .small,
                                active: glyph == current, ink: CanvasRow.ink(look)) {
@@ -492,12 +503,6 @@ struct CanvasLookPicker: View {
                         store.setLook(next, for: path)
                     }
                 }
-            }
-            HStack {
-                Spacer()
-                Button("Done") { store.lookPicking = nil }
-                    .buttonStyle(.outline)
-                    .keyboardShortcut(.cancelAction)
             }
         }
         .padding(Space.s)
@@ -510,8 +515,7 @@ struct CanvasLookPicker: View {
     /// An icon as a person says it: `graduation-cap` is "Graduation cap".
     static func name(of glyph: Glyph) -> String {
         if glyph == VaultEntry.Kind.canvas.symbol { return "Default" }
-        let words = glyph.rawValue.replacingOccurrences(of: "-", with: " ")
-        return words.prefix(1).capitalized + words.dropFirst()
+        return IconPrompt.spoken(glyph.rawValue)
     }
 }
 

@@ -123,6 +123,15 @@ enum Stroke {
 enum Handle {
     static let outline: CGFloat = 1
     static let corner: CGFloat = 8
+    /// What a resize grip answers (revision 66), centred on what it
+    /// stands for, as Figma's do: a square this wide round each corner's
+    /// mark, and a band this deep across each edge, half over the desk
+    /// and half over the node. Before, a corner's grip began two points
+    /// out, so the outer half of the square you aimed at was the desk.
+    static let cornerGrip: CGFloat = 16
+    static let edgeGrip: CGFloat = 8
+    /// The live size a resize shows under its node, this far below it.
+    static let readoutGap: CGFloat = Space.s
     /// A connector's dot: the corner square's size, pressed within a
     /// circle `connectorHit` wide (revision 42), which starts where the
     /// edge's resize grip ends.
@@ -153,6 +162,9 @@ enum Handle {
 enum Shell {
     /// The margin every floating thing keeps from the desk's edge.
     static let gutter: CGFloat = Space.m
+    /// The icon picker's grid (revision 67): five lines of cells and the
+    /// top of a sixth, so it reads as one that scrolls.
+    static let iconPickerHeight: CGFloat = 200
     /// The sidebar's card: what it opens at, and how far its edge drags
     /// either way.
     static let sidebar: CGFloat = 280
@@ -203,8 +215,16 @@ enum Shell {
     static let sketch = CGSize(width: 960, height: 640)
     static let sketchMin = CGSize(width: 480, height: 320)
     static let sketchTab: CGFloat = 34
-    static let sketchTabMin: CGFloat = 160
-    static let sketchTabMax: CGFloat = 320
+    /// The tab is what moves the window (revision 64), so it is wide
+    /// enough to hold, as Safari's tab is: the name centred, the close
+    /// glyph at the leading edge, and either side of the name a shoulder
+    /// of blank at least `sketchTabShoulder` wide — two small glyph
+    /// buttons, a comfortable hold — however long the name; the tab grows
+    /// with the name only to `sketchTabMax`, which the smallest window's
+    /// top edge still has room for.
+    static let sketchTabMin: CGFloat = 280
+    static let sketchTabMax: CGFloat = 420
+    static let sketchTabShoulder: CGFloat = 48
     static let sketchTabCorner: CGFloat = Radius.card
     /// Room round the sketch and its style panel, each in a window of
     /// its own, for the card's shadow: one `Elevation`, not the window's.
@@ -376,6 +396,10 @@ enum Icon {
     /// The status dot before a chip's text.
     static let dot: CGFloat = 6
 
+    /// The largest picture an icon on the desk is drawn into (revision
+    /// 67): past it, zooming in further scales the picture.
+    static let deskRaster: CGFloat = 1024
+
     /// The square an icon of `size` is drawn in.
     static func box(_ size: CGFloat) -> CGFloat { (size * 1.2).rounded() }
 
@@ -479,12 +503,15 @@ struct IconButton: View {
     /// The key the cell wears at its corner (revision 40): the palette's
     /// tools, whose bare key picks them on the desk.
     var key: String? = nil
+    /// Any of Lucide's icons by name, drawn in `symbol`'s place: the icon
+    /// picker's cells (revision 67), whose icons are not all `Glyph`s.
+    var lucide: String? = nil
     let action: () -> Void
     @Environment(\.isEnabled) private var enabled
 
     var body: some View {
         Button(action: action) {
-            ToolCell(symbol: symbol, size: size, key: key,
+            ToolCell(symbol: symbol, size: size, key: key, lucide: lucide,
                      ink: active ? activeStyle.ink : enabled ? ink : Ink.faint,
                      keyInk: active ? activeStyle.ink : Ink.muted)
         }
@@ -503,25 +530,32 @@ struct ToolCell: View {
     let symbol: Glyph
     let size: IconButton.Size
     var key: String? = nil
+    var lucide: String? = nil
     var ink: Color = Ink.icon
     var keyInk: Color = Ink.muted
 
     var body: some View {
-        GlyphImage(symbol, size: size.glyph)
-            .foregroundStyle(ink)
-            .offset(x: key == nil ? 0 : -1, y: key == nil ? 0 : -1)
-            .frame(width: size.side.width, height: size.side.height)
-            .overlay(alignment: .bottomTrailing) {
-                if let key {
-                    Text(key)
-                        .font(Typography.keyMark)
-                        .monospacedDigit()
-                        .foregroundStyle(keyInk)
-                        .padding(.trailing, 3)
-                        .padding(.bottom, 2)
-                        .accessibilityHidden(true)
-                }
+        Group {
+            if let lucide, let named = GlyphImage(named: lucide, size: size.glyph) {
+                named
+            } else {
+                GlyphImage(symbol, size: size.glyph)
             }
+        }
+        .foregroundStyle(ink)
+        .offset(x: key == nil ? 0 : -1, y: key == nil ? 0 : -1)
+        .frame(width: size.side.width, height: size.side.height)
+        .overlay(alignment: .bottomTrailing) {
+            if let key {
+                Text(key)
+                    .font(Typography.keyMark)
+                    .monospacedDigit()
+                    .foregroundStyle(keyInk)
+                    .padding(.trailing, 3)
+                    .padding(.bottom, 2)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 

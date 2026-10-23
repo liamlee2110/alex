@@ -649,12 +649,31 @@ enum SecondaryClick {
     static var lastPoint: NSPoint?
     static weak var lastWindow: NSWindow?
 
+    /// The rows that answer a right press themselves (`rowMenu`), and
+    /// whether the press going on is one of theirs, so its release goes
+    /// with it.
+    static let regions = NSHashTable<RowMenuRegion.Region>.weakObjects()
+    private static var rowPress = false
+
     static func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .rightMouseUp]) { event in
             // A menu's or a tooltip's panel is not asked; the quick
             // sketch's desk is (revision 59).
             guard let window = event.window, !(window is NSPanel) || window is SketchPanel else { return event }
+            if event.type == .rightMouseUp, rowPress {
+                rowPress = false
+                return nil
+            }
+            if event.type == .rightMouseDown,
+               let region = regions.allObjects.first(where: { $0.window === window && $0.holds(event) }),
+               let items = region.items {
+                rowPress = true
+                TooltipPanel.shared.cancel("menu opened")
+                PopupMenu.shared.open(items(), anchor: NSRect(origin: window.convertPoint(toScreen: event.locationInWindow), size: .zero),
+                                      placement: .pointer, in: window)
+                return nil
+            }
             if event.type == .rightMouseDown {
                 lastPoint = window.convertPoint(toScreen: event.locationInWindow)
                 lastWindow = window
@@ -669,9 +688,49 @@ enum SecondaryClick {
     }
 }
 
+/// A right-click menu on a sidebar row (revision 67). The row is a
+/// `Button`, and the control-click `popupMenu` turns a right press into
+/// never reached its menu there: a right press on a canvas row did
+/// nothing. A row is flat and never overlapped, so it needs no SwiftUI
+/// hit testing: an AppKit view behind it, which takes no clicks itself,
+/// knows its own frame, and `SecondaryClick` opens its menu straight
+/// from the right press that lands inside it.
+struct RowMenuRegion: NSViewRepresentable {
+    let items: () -> [MenuItem]
+
+    func makeNSView(context: Context) -> Region {
+        SecondaryClick.install()
+        return Region()
+    }
+
+    func updateNSView(_ view: Region, context: Context) { view.items = items }
+
+    final class Region: NSView {
+        var items: (() -> [MenuItem])?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil { SecondaryClick.regions.remove(self) } else { SecondaryClick.regions.add(self) }
+        }
+
+        /// The press is inside the part of the row that shows: a row
+        /// scrolled under the list's edge does not answer.
+        func holds(_ event: NSEvent) -> Bool {
+            !isHiddenOrHasHiddenAncestor && visibleRect.contains(convert(event.locationInWindow, from: nil))
+        }
+    }
+}
+
 extension View {
     /// The app's right-click menu, in place of SwiftUI's `.contextMenu`.
     func popupMenu(@MenuBuilder _ items: @escaping () -> [MenuItem]) -> some View {
         modifier(PopupContextMenu(items: items))
+    }
+
+    /// The right-click menu of a sidebar row, a button: see `RowMenuRegion`.
+    func rowMenu(@MenuBuilder _ items: @escaping () -> [MenuItem]) -> some View {
+        background(RowMenuRegion(items: items))
     }
 }

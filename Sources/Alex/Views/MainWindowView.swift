@@ -146,6 +146,9 @@ struct MainWindowView: View {
             if Launch.value(after: "--link-prompt") == "on" {
                 store.showLinkPrompt = true
             }
+            // `--icon-prompt on|<query>`: the icon picker open, searching
+            // for the query when one is given, for a snapshot.
+            if Launch.value(after: "--icon-prompt") != nil { store.showIconPrompt = true }
             // `--find <query>`: find on canvas open on a query, for a snapshot.
             if let query = Launch.value(after: "--find") {
                 store.showFindPanel()

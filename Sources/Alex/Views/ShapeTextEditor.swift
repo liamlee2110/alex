@@ -37,10 +37,7 @@ struct ShapeTextEditor: NSViewRepresentable {
         view.string = text
         style(view, context.coordinator)
         view.onDone = onDone
-        DispatchQueue.main.async {
-            view.window?.makeFirstResponder(view)
-            view.moveToEndOfDocument(nil)
-        }
+        view.claimKeys { $0.moveToEndOfDocument(nil) }
         return view
     }
 
@@ -127,5 +124,28 @@ final class ShapeTextView: NSTextView {
             return
         }
         super.keyDown(with: event)
+    }
+}
+
+extension NSTextView {
+    /// An editor that opens takes the keys, and keeps taking them for a
+    /// few passes: the desk's own focus, asked for by the press that
+    /// opened the editor, can land after the first claim and take them
+    /// back, which left a box open, its words greyed, and typing nowhere.
+    /// It stops once it has them, once it has left the window, or when
+    /// another text view has them, which is someone's click elsewhere.
+    func claimKeys(_ then: ((NSTextView) -> Void)? = nil) {
+        var first = true
+        func claim(_ left: Int) {
+            guard let window else { return }
+            if window.firstResponder !== self {
+                if !first, window.firstResponder is NSTextView { return }
+                window.makeFirstResponder(self)
+            }
+            if first { first = false; then?(self) }
+            guard left > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { claim(left - 1) }
+        }
+        DispatchQueue.main.async { claim(4) }
     }
 }
