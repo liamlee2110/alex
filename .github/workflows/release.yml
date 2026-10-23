@@ -1,5 +1,15 @@
 name: Release
 
+# A `v*` tag builds a Developer ID signed, notarised Alex, wraps it in a
+# disk image, and publishes it as this repo's latest release (revision
+# 68), with `appcast.xml`, the Sparkle feed the app reads from
+# releases/latest/download/appcast.xml.
+#
+# Secrets: DEVELOPER_ID_P12 (base64 of the exported certificate and key),
+# DEVELOPER_ID_P12_PASSWORD, NOTARY_KEY (base64 of the App Store Connect
+# .p8), NOTARY_KEY_ID, NOTARY_ISSUER_ID, SPARKLE_PRIVATE_KEY (the EdDSA
+# key `generate_keys -x` exports).
+
 on:
   push:
     tags: ['v*']
@@ -12,20 +22,109 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The build number is the commit count, and the notes read the
+          # tag's annotation and the log since the last tag.
+          fetch-depth: 0
       - name: Toolchain
         run: swift --version
       - name: Tests
         run: ./run-tests.sh
-      - name: Build
-        run: ./build.sh
-      - name: Package
+
+      - name: Signing keychain
+        env:
+          P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
         run: |
-          ditto -c -k --keepParent Alex.app "Alex-${GITHUB_REF_NAME}.zip"
-          hdiutil create -volname Alex -srcfolder Alex.app -ov -format UDZO "Alex-${GITHUB_REF_NAME}.dmg"
-          ls -la Alex-*
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/developer-id.p12"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          test -n "$IDENTITY" || { echo "No Developer ID Application identity in the certificate"; exit 1; }
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Notary key
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          printf '%s' "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "BUILD=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+          VERSION="${GITHUB_REF_NAME#v}" BUILD="$(git rev-list --count HEAD)" ./build.sh
+
+      - name: Notarise the app
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: tools/notarize.sh Alex.app
+
+      - name: Disk image
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          # The disk image is both the download and Sparkle's update.
+          tools/make-dmg.sh Alex.app "Alex-$VERSION.dmg"
+          codesign --force --timestamp --sign "$SIGN_IDENTITY" "Alex-$VERSION.dmg"
+          tools/notarize.sh "Alex-$VERSION.dmg"
+          # A name that never changes, for the README's download link.
+          cp "Alex-$VERSION.dmg" Alex.dmg
+          spctl --assess --type open --context context:primary-signature --verbose "Alex.dmg"
+          ls -la Alex-* Alex.dmg
+
+      - name: Notes and appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          PREVIOUS="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          # An annotated tag's message is the notes; otherwise the commit
+          # subjects since the last tag.
+          NOTES=""
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = tag ]; then
+            NOTES="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN PGP/,$d')"
+          fi
+          if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
+            NOTES="$(git log --format='- %s' ${PREVIOUS:+$PREVIOUS..}"$GITHUB_REF_NAME")"
+          fi
+          printf '%s\n' "$NOTES" > notes.md
+          # generate_appcast signs the image with the EdDSA key and embeds
+          # the notes beside it (a .md of the same name, Sparkle 2.9).
+          mkdir -p updates
+          cp "Alex-$VERSION.dmg" updates/
+          cp notes.md "updates/Alex-$VERSION.md"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          .build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            --ed-key-file "$RUNNER_TEMP/sparkle.key" \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            --embed-release-notes updates
+          rm "$RUNNER_TEMP/sparkle.key"
+          grep -q 'sparkle:edSignature' updates/appcast.xml || { echo "appcast is not signed"; exit 1; }
+          cp updates/appcast.xml appcast.xml
+          cat appcast.xml
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "Alex-${GITHUB_REF_NAME}.zip" "Alex-${GITHUB_REF_NAME}.dmg" \
-            --title "Alex $GITHUB_REF_NAME" --generate-notes
+          # One step, all files at once: the feed never names a release
+          # whose disk image is not up yet.
+          gh release create "$GITHUB_REF_NAME" "Alex-$VERSION.dmg" Alex.dmg appcast.xml \
+            --title "Alex $GITHUB_REF_NAME" --notes-file notes.md --latest
+
+      - name: Clean up
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/sparkle.key"

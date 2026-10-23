@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if Launch.value(after: "--select-all") == "on" { QuickSketch.shared.model?.sketch.selectAll() }
             }
         }
+        // The daily update check (revision 68); never in a snapshot run.
+        if Snapshot.requestedPath(CommandLine.arguments) == nil {
+            MainActor.assumeIsolated { Updater.shared.start() }
+        }
         if let path = Snapshot.requestedPath(CommandLine.arguments) {
             let delay = Launch.value(after: "--snapshot-delay").flatMap(Double.init) ?? 2.0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {

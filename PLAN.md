@@ -1258,6 +1258,127 @@ inside the screen if it hangs off; only the first time, or when the
 pointer is on another screen, at that screen's foot (`SketchFrame`,
 pure, in the canvas suite; the drag itself is dogfood). The tab's blank
 still moves it.
+Revision 64 (2026-10-20, asked by Liam, looking at the quick sketch's
+tab): the tab is the handle. Revision 59 gave the window's move to the
+tab's blank, and the blank was the eight points of padding either side
+of the name: the one thing in the tab wide enough to hold, the name,
+opens the menu, and the glyph before it closes, so there was nowhere to
+take the window by. Now the tab is Safari's: the name and its menu
+centred, the close glyph at the leading edge, and either side of the
+name a shoulder of blank at least 48 points wide
+(`Shell.sketchTabShoulder`) — the tab 280 points at the least and 420
+at the most, where a long name truncates against the shoulders rather
+than taking them. The name still opens the menu and does not move the
+window: one verb per place (revision 19), the switcher switches and the
+handle moves. The desk cannot be the handle, since a press on it is the
+tool's, and the edges are the grips (revision 63); so the handle is the
+sketch's one piece of chrome, made wide enough to be one.
+
+Revision 65 (2026-10-20, asked by Liam, right-clicking a canvas's row):
+a canvas can be deleted. Delete, last and alone in the row's right-click
+menu and under the Canvases `•••`, moves the `.canvas` file to the
+system Trash (`Vault.trash`, Foundation's `trashItem`), where Finder's
+Put Back is the undo and git the far one; the app destroys nothing.
+D7 stands: the door still has no delete, and this is Liam's click in
+the app, the one D7 names. The files the canvas's cards show stay where
+they are — a canvas is a layout, not what it lays out. The open canvas
+deleted, its neighbour in the list opens, the one after it else the
+last, and the last canvas gone leaves the empty desk that asks for the
+first (revision 54); the quick sketch showing the deleted canvas empties
+its desk the way it does for any canvas gone from disk. What the app
+remembered for it — viewport, look, recents — is forgotten. No
+confirmation: the Trash is the confirmation, as in Finder and Figma.
+The trash is hidden from the watcher like a move (revision 52's
+own-write bookkeeping, `.absent`).
+
+Revision 66 (2026-10-21, asked by Liam, resizing pictures in the quick
+sketch): resizing follows the common practice, and the sketch's handle
+and zoom hold. A grip now answers where its mark is: a corner's a square
+16 points wide centred on Figma's square (`Handle.cornerGrip`), an
+edge's a band 8 deep centred on the line (`Handle.edgeGrip`); before, a
+corner's grip began two points out, so the outer half of the square you
+aimed at was the desk, and an edge's band lay mostly over the card,
+where a press moves it. A picture is resized by its four corners alone,
+its proportions kept as Miro's, FigJam's, Freeform's and Excalidraw's
+are, ⇧ freeing them (`Grip.grips`, `Grip.keepsProportions`); a side
+could only stretch it. While any resize runs, its size shows under the
+node in whole desk points, a blue capsule (Figma's). The sketch's tab
+wears a grip glyph at its trailing edge, across from the close glyph,
+and everything in the tab but the name and the close glyph moves the
+window under the open hand, through AppKit's `performDrag` taking the
+first press (`WindowMover`): SwiftUI's `WindowDragGesture` lost a press
+now and then on the non-activating panel and showed no pointer. The
+grip is held, not pressed, so it is a `Glyph` on the handle, not an
+`IconButton`. And the zoom's keys are the sketch's own: the View menu's
+⌘= ⌘- ⌘0 ⌘1 act on the focused scene's store, the window's, so in the
+sketch they zoomed the window hidden behind it; `SketchPanel` takes
+them first, as it takes ⌘N and ⌘W. ⌃ with the wheel now zooms as ⌘
+does, as in Figma and a browser.
+
+Revision 67 (2026-10-22, asked by Liam, from the icon picker and a
+canvas's row): the picker wastes no room, and a row's right-click
+answers. The picker's icons fill the line, as many as the sidebar is wide
+(an adaptive grid; nine at the default width), and its Done sits at the
+end of the colours rather than on a line of its own. The icons are
+forty-five, five full lines: lightning, trophy, plane, checklist, inbox,
+mail, chat, chart, wallet, wrench, house, cutlery, dumbbell, game
+controller and cart joined the thirty. A canvas's row is a `Button`, and
+the control-click that `.popupMenu` makes of a right press never reached
+its menu there, so revision 65's Delete could not be found by the
+gesture it was put under. A sidebar row's menu is now `.rowMenu`: an
+AppKit view behind the row, taking no clicks, knows its frame, and
+`SecondaryClick` opens its `PopupMenu` from the right press itself and
+swallows the press. The desk's nodes keep `.popupMenu`, whose SwiftUI
+hit testing picks the frontmost of overlapping cards.
+
+And icons go on the desk (asked by Liam in the quick sketch: "a preset
+icon, the user icon for example"). Add an icon…, under Add and in the
+sketch's tools, opens a card where the link prompt floats: the canvases'
+forty-five first, a field that searches every icon in Lucide's sprite by
+name (`user` and `users` before `circle-user`), ↩ for the first match.
+The pick lands selected in a free spot by the middle of the view, 64
+points square. On disk it is a `text` node with `x-shape: icon` and
+`x-icon` its Lucide name, so Obsidian shows an empty card in its place
+(D4). It wears its colour as a shape's outline does; the style panel
+gives it colour, order and duplicate, nothing about strokes or words,
+and like a picture it resizes by its corners with its proportions kept,
+⇧ freeing them (`CanvasNode.locksProportions`). It is drawn from the
+sprite at its size on screen, stepped, so it stays sharp under zoom
+(`IconMark`). `IconButton` takes any Lucide name (`lucide:`) for the
+picker's cells.
+
+Revision 68 (2026-10-23, asked by Liam, with a paid developer account):
+Alex ships like any other Mac app, and updates itself through Sparkle. A
+`v*` tag builds it signed with Liam's Developer ID (team `3Y4L9KSVBD`)
+under the hardened runtime, notarises it and staples the ticket, so it
+opens with no Gatekeeper warning, offline too; Sequoia dropped the
+right-click way past an unnotarised app. The disk image is the usual
+one: Alex at the left, an Applications link at the right, 128-point
+icons, the app's icon on the volume (`tools/make-dmg.sh`; Finder deletes
+a volume icon it finds while arranging the window, so the icon goes on
+after), itself signed and notarised (`tools/notarize.sh`). The version
+is the tag and `CFBundleVersion` the commit count, so it only rises;
+`build.sh` reads both, and `SIGN_IDENTITY` from the environment,
+ad-hoc by default. The repo went public with this revision (§9.4), so
+the release here carries the disk image and `appcast.xml`, which `generate_appcast` writes and signs with the
+EdDSA key (the one key Liam's apps share, Sparkle's advice: Firsts made
+it; `sparkle_public_key` is its public half, in Info.plist as
+`SUPublicEDKey`). The app reads the feed at
+`liamle.me/alex/appcast.xml`, which Liam's site forwards to the latest
+release's `appcast.xml` (and `liamle.me/alex/download` to its disk
+image): the address is in every installed copy for good, and a domain
+outlives a hosting choice. It reads it once a day and from "Check for
+updates…" under About and in Settings' Updates section, and offers a
+newer build in Sparkle's window; an update is accepted only if its
+EdDSA signature and its code signature both match. A build made here
+is not Developer ID signed, so its updater never starts and never puts
+a release over a dev build. Sparkle.framework sits in
+Contents/Frameworks, signed inside out, without its XPC services (Alex
+is not sandboxed). First written as the app's own updater, without
+Sparkle; Liam chose Sparkle after reading how Mac apps ship: its second
+signature, delta updates and window are worth the one dependency.
+Found on the way: Swift 6.4 builds both triples into one products
+folder, so `build.sh` copies each slice out before the next build.
 
 ## 0. One paragraph
 
@@ -1311,7 +1432,8 @@ files scans in milliseconds and an index is a second truth.
 
 **D3. Stack: SwiftUI, native, macOS 15+, Swift Package, no Xcode project,
 no third-party dependencies.** Decided by Liam. Same shape as Donna:
-`Package.swift`, `build.sh` assembles and ad-hoc signs the `.app`,
+`Package.swift`, `build.sh` assembles and signs the `.app` (ad-hoc here,
+Developer ID for a release since revision 68),
 `run-tests.sh` compiles the suites. What this buys: Donna's proven parts
 lift straight in (the MCP transport, the TextKit Markdown editor that
 renders in place, the window and panel plumbing, the design-law lint, the
@@ -1321,7 +1443,11 @@ only Xcode. What it costs: the canvas engine (viewport, drag, resize,
 marquee, edges, groups) is written from scratch rather than taken from a
 library; the React folder component is redrawn, not reused; maths rendering
 has no native answer in v1; Windows and Linux are off the table by design.
-The one dependency question left open is a LaTeX renderer at M4 (§9).
+The one dependency question left open is a LaTeX renderer at M4 (§9). Updates
+are the other exception (revision 68, decided by Liam): Sparkle 2, the
+updater most Mac apps outside the App Store use, as a binary framework
+pinned to one version, because a second signature over every update,
+delta updates and a tested install path are not worth writing again.
 Icons are art, not code (revision 24): Lucide's sprite (ISC) ships as a
 resource, one SVG file that AppKit draws itself, with no package and
 nothing compiled in; any other bundled art needs the same case made.
@@ -1616,8 +1742,8 @@ an old Home is a group that never moves a file.
 
 Interactions in v1: pan (two-finger scroll, or drag the ground), pinch
 zoom, marquee select, drag to move (never moving a file, revision 54), any edge or corner to resize, ⌫
-removes from the canvas (never deletes the file; a file is deleted only
-from the tray with confirmation), the sticky tool or ⌘⇧N makes a sticky
+removes from the canvas (never deletes the file; a canvas is deleted
+only from its row in the sidebar, to the Trash, revision 65), the sticky tool or ⌘⇧N makes a sticky
 note (double-click ground did until revision 46), ↩ writes in the one
 selected box and Esc or ⌘↩ finishes (revision 50), drag a file from the tray or from Finder onto the canvas to place it,
 drag from a card edge to connect, ⌘L, ⌘V or a dropped address for a link
@@ -1644,7 +1770,7 @@ compile it.
 | M2 | Editing | **Done 2026-09-13.** Drag to move (a group carries what it holds), any edge or corner to resize (the pointer over an edge is what says the edge resizes, as on a window, and the opposite edge anchors; revision 26 draws a square at each corner of the selection; ⇧ keeps the proportions, revision 35), double-click a note card to write on it in place, marquee with ⇧ to add, ⌘G groups the selection, drag a side dot onto another card to connect (the dot of the side the pointer nears, on a card selected alone, since revision 42), double-click the desk for a sticky that edits in place, ⌘N for a new note, the tray drags onto the desk and Finder drops copy in, every mutation one undo step. The store side is covered by a headless suite; the gestures themselves are verified by hand in dogfood. `competencies.canvas` as the roadmap map lands with M4's frontmatter groups and edges. | 2½ days |
 | M3 | The door | **Done 2026-09-13.** Donna's transport ported with the port changed; eight tools; Settings toggle with a status line, the `claude mcp add` line and a button that writes `.mcp.json` into the vault; `.mcp.json` written into the learn vault. Driven over HTTP the way Claude Code does it: `write_artifact` with a step-response PNG created `artifacts/C3.1/` and its canvas, `add_card` and `connect` put an explanation beside it, `focus` opened the canvas and panned to the plot. Origin check answers 403, GET answers 405. A headless suite covers the protocol and every tool, including the refusals. | 1 day |
 | M4 | Progress layer | **Done 2026-09-13.** `canvas.config.json` views: `colorBy` tints a card and its chip by a frontmatter value, `edgesFrom` draws dashed prerequisite edges between cards by id, `groupBy` arranges a directory into labelled groups (⌘⇧A). The learn vault's `competencies.canvas` is now the roadmap map: nine blocks, prerequisites as arrows. ⌘K finds a file by path or title and reveals its card. The panel shows a note's frontmatter as chips above the editor. The README card carries the dashboard block. Maths stays raw `$…$` until Liam decides §9. | 1 day |
-| M5 | OSS | **Done 2026-09-13.** README with cropped snapshots, MIT licence, CONTRIBUTING, `vault-template/` (README, CLAUDE.md starter, `.mcp.json`, `canvas.config.json`, one note), CI on push and a release workflow that builds, zips, makes a DMG and publishes on a `v*` tag; v0.1.0 tagged. The repo stays private until Liam flips it (§9). | 1 day |
+| M5 | OSS | **Done 2026-09-13.** README with cropped snapshots, MIT licence, CONTRIBUTING, `vault-template/` (README, CLAUDE.md starter, `.mcp.json`, `canvas.config.json`, one note), CI on push and a release workflow that builds, zips, makes a DMG and publishes on a `v*` tag; v0.1.0 tagged. Public since revision 68 (2026-10-23). | 1 day |
 
 After M3 the learn repo's CLAUDE.md §4 step 10 gained one clause: if the
 door answers, write the session's artifacts through it and focus the
@@ -1684,16 +1810,20 @@ prerequisite edges, blocks as groups), `learn.canvas` and
   non-persistent data store, no script message handlers, every link click
   and every new window handed to the default browser. YouTube's embed page
   answers "Error 153" unless a referring https page sent it, so the player
-  is wrapped in a local page (revision 9). Title fetches are the app's only
-  outbound traffic, and Settings turns them off.
+  is wrapped in a local page (revision 9). Title fetches and the daily
+  update check (revision 68) are the app's only outbound traffic, and
+  Settings turns each off.
 - **Maths.** Sessions carry LaTeX in specs. Native rendering means either a
   third-party package (SwiftMath) or a `WKWebView` read view with a bundled
   KaTeX. Neither is in v1; raw `$...$` shows until M4 decides.
 - **The door only helps Claude Code.** Fine for the target user; documented.
 - **Port collision.** Loud in Settings, fixable there; same as Donna.
-- **Ad-hoc signing.** Gatekeeper warns on a downloaded `.dmg` from someone
-  else's build; the README says build from source or right-click Open.
-  Notarisation needs a paid developer account and is a later decision.
+- **Signing.** Releases are Developer ID signed and notarised (revision
+  68); a build from source is ad-hoc signed and never updates itself.
+  The certificate, the notary key and Sparkle's EdDSA key live in the
+  repo's secrets and Liam's keychain. Sparkle lets either the
+  certificate or the EdDSA key change in one update, never both; lose
+  both and installed copies can only be updated by hand.
 
 ## 9. Decisions Liam owns
 
@@ -1703,7 +1833,9 @@ Answer in this file or in chat.
 2. **No delete over the door** (D7).
 3. **Dependency policy.** Zero third-party like Donna, with one exception
    allowed at M4 for maths, or none and maths waits. My take: allow the one.
-4. **Going public.** The repo is private while dogfooding; M5 flips it.
+   Sparkle is allowed for updates (revision 68).
+4. **Going public.** Done at revision 68 (2026-10-23), so releases and
+   the update feed live in this repo.
 5. **Settled:** name (Alex), repo (`liamlee2110/alex`, MIT), stack (SwiftUI,
    native, macOS only), fonts (system serif, nothing bundled).
 
@@ -1711,3 +1843,8 @@ Answer in this file or in chat.
 
 Nothing to install. Xcode 26.3 and the Swift 6 toolchain are present;
 `swift build` and `codesign` are all `build.sh` needs.
+
+For releases (revision 68), once: a Developer ID Application certificate
+exported as a `.p12`, an App Store Connect API key (`.p8`) for
+`notarytool` and Sparkle's EdDSA private key (`generate_keys -x`), all
+as this repo's secrets (`release.yml` names them).

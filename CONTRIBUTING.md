@@ -4,7 +4,7 @@ Alex is one Swift package. Xcode 16 or later, macOS 15 or later, nothing
 else to install.
 
 ```bash
-./build.sh              # release build, assembled into Alex.app, ad-hoc signed
+./build.sh              # release build, assembled into Alex.app, ad-hoc signed (SIGN_IDENTITY= for Developer ID)
 ./run-tests.sh          # the design-law lint and three headless suites
 open Alex.app --args --vault ~/some/folder
 ```
@@ -27,8 +27,8 @@ They are argued in `PLAN.md` (D1–D8). The short version:
   writes. A view never touches the file system; it calls a store.
 - **JSON Canvas 1.0, kept to.** Keys Alex adds are `x-` keys. Unknown keys
   and unknown node types survive a round trip untouched.
-- **No third-party dependencies.** If you need one, open an issue first and
-  say what it replaces.
+- **No third-party dependencies but Sparkle** (updates). If you need
+  one, open an issue first and say what it replaces.
 - **The door never deletes.** Not gated, not hidden: absent.
 - **The design law** is the header of `Sources/Alex/Views/Style.swift`, and
   `run-tests.sh` greps for violations. Two weights, no italics in chrome,

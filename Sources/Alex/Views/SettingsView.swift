@@ -46,6 +46,7 @@ struct SettingsSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     workspace
+                    UpdatesSection()
                     ToolKeysSection()
                     QuickSketchSection()
                     links
@@ -124,7 +125,7 @@ struct SettingsSheet: View {
             LabeledContent("Fetch titles and pictures for link cards") {
                 SettingsSwitch("Fetch titles and pictures for link cards", isOn: $previews.enabled)
             }
-            SettingsNote("The app's only outbound traffic: it asks the site, or its oEmbed service, "
+            SettingsNote("With the update check, the app's only outbound traffic: it asks the site, or its oEmbed service, "
                          + "for a title and a picture, and keeps them in its cache. Off, a card shows "
                          + "its address, and the panel still embeds the page when you open it.")
         }
@@ -324,6 +325,32 @@ struct SettingsSwitch: View {
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.small)
+    }
+}
+
+/// Updates (revision 68): the daily check, and one now.
+private struct UpdatesSection: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        SettingsSection("Updates") {
+            LabeledContent("Version") {
+                HStack(spacing: Space.s) {
+                    Text("\(updater.version) (\(updater.build))")
+                        .foregroundStyle(Ink.muted)
+                    Button("Check now") { updater.check() }
+                        .buttonStyle(.outline)
+                        .disabled(updater.isRelease && !updater.canCheck)
+                }
+            }
+            LabeledContent("Check for updates automatically") {
+                SettingsSwitch("Check for updates automatically", isOn: $updater.automatic)
+                    .disabled(!updater.isRelease)
+            }
+            SettingsNote("Once a day Alex reads a small file from its GitHub releases, which says what "
+                         + "the latest version is. Nothing about you or your vault is sent. An update "
+                         + "is installed only when you say so, and only if Alex's developer signed it.")
+        }
     }
 }
 

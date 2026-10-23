@@ -8,8 +8,9 @@ the decision rewritten first, not worked around.
 
 - **Files are the truth (D2).** Nothing in memory that is not on disk within
   a second. Every write is atomic. The watcher must not echo our own writes.
-- **No third-party dependencies (D3).** Ask before adding one; the only
-  exception on the table is a maths renderer at M4.
+- **No third-party dependencies (D3).** Ask before adding one. Sparkle
+  is the one in (revision 68, updates); the only other exception on the
+  table is a maths renderer at M4.
 - **The door never deletes (D7).** Not gated, not hidden: absent.
 - **The design law** is the header of `Sources/Alex/Views/Style.swift` and
   `run-tests.sh` lints it. Two weights, no italics in chrome, four radii,
@@ -151,10 +152,23 @@ gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
   pointer, not the events: a press, moves and a release made with
   `NSEvent` and handed to `sendEvent`, or posted to the process with
   `CGEvent.postToPid`, spaced over run-loop passes or not, arrive as a
-  tap (`--right-click` works because a click is all a menu needs). Moving
+  tap. Moving
   the real pointer takes the HID tap, which takes Accessibility. A
   gesture's geometry goes in the canvas suite (`Grip`, `Proportion`); the
   gesture itself is dogfood.
+- **A synthetic right press opens no `.popupMenu`.** Found at revision
+  65: `--right-click x,y` on a sidebar row and on a card logged
+  `menu []` from a run launched by a shell, with the app active, the
+  window key and `--hit-test` naming the right view; the press through
+  `sendEvent`, through `postEvent` (so the `SecondaryClick` monitor saw
+  it) and a control-click sent directly all matched nothing, so the
+  `SpatialTapGesture().modifiers(.control)` behind every menu seems to
+  read the keyboard's real modifier state. Snapshot a menu's items with
+  `--menu <label>` on an `IconMenu` (the Canvases `•••` lists the row's
+  verbs too). The real press missed too, on a canvas row, a `Button`:
+  revision 67 gives sidebar rows `.rowMenu`, which `SecondaryClick` opens
+  from the right press itself, and `--right-click` now posts its press
+  (`postEvent`) so the monitor sees it and logs the row's menu.
 - **A snapshot run's window is under your pointer.** A test that clicks
   (`--right-click`) late in the run can be beaten by a real hover or
   click and open another canvas, which is then remembered; press early.
@@ -180,6 +194,13 @@ gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
   outside.** Restyling the whole storage in `updateNSView`, which SwiftUI
   calls at every save, emptied the editor's undo; restyle only when the
   look changed.
+- **The desk's `@FocusState` can land after an editor takes the keys.**
+  A press sets `focused = true`, which SwiftUI applies a pass or more
+  later; a box's editor that claimed first responder once, on the next
+  pass, lost it, and opened with its words greyed and typing going
+  nowhere until another click. Editors claim through
+  `NSTextView.claimKeys`, which retries briefly, and a press in the box
+  being written in leaves the desk's focus alone.
 - **A backgrounded run's window is often not key.** Events sent to it
   land, but a menu item's action goes to the key window and misses;
   `--keys … cmd-z` sends `undo:` down the window's own responder chain.
@@ -201,6 +222,10 @@ gets a window. Crashes land in `~/Library/Logs/DiagnosticReports/Alex-*.ips`.
   `onTapGesture` runs the current event can be a pointer move, whose
   `clickCount` is 0 or 1; the desk counts a double-click itself by time
   and place.
+- **A panel outside a scene is never the menu bar's focused scene.**
+  The commands read `@FocusedValue(\.canvasStore)`, which only the main
+  window's scene sets, so ⌘= in the quick sketch zoomed the hidden
+  window. A key the sketch needs goes in `SketchPanel.performKeyEquivalent`.
 - **Arrow keys carry the keypad and function flags.** A key handler that
   wants "no modifiers but ⇧" must ignore `.numericPad` and `.function`.
 - **The type checker gives up on a long `Canvas` closure.** Draw in a method
@@ -230,8 +255,19 @@ Full-bleed art sits too big and too square in the Dock.
 
 ## Releasing
 
-Tag `vX.Y.Z` and push the tag. `.github/workflows/release.yml` runs the
-suites, builds, zips the app, makes a DMG and publishes a GitHub release.
+Tag `vX.Y.Z` (annotated: its message is the release notes the updater
+shows) and push the tag. `.github/workflows/release.yml` runs the
+suites, builds with the Developer ID, notarises the app and the DMG,
+signs the disk image for Sparkle, and publishes the release here with
+the `appcast.xml` the app reads through `liamle.me/alex/appcast.xml`, a
+redirect in the liamle site's `next.config.mjs` (revision 68). To try an update on builds made here: sign an old and a new build
+with the same certificate (`SIGN_IDENTITY`), put the new one's DMG in a
+folder, run Sparkle's `generate_appcast` on it (`.build/artifacts/
+sparkle/Sparkle/bin`) with `--download-url-prefix http://127.0.0.1:8765/`,
+serve the folder there, and open the old one with `--update-feed
+http://127.0.0.1:8765/appcast.xml --update-check install
+-SUAutomaticallyUpdate YES`: it installs and relaunches. Sparkle
+refuses a `file://` feed.
 `docs/*.png` are `--window 1100x700` snapshots (panel and reader at
 1280x760, roadmap and reader with `--sidebar off`, so the desk has room)
 used by the README, the whole frame kept since the strip and the sidebar are

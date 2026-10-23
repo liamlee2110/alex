@@ -9,7 +9,9 @@ import Foundation
 /// held open), `--right-click <x>,<y>` (a right press sent through the
 /// window, its menu logged), `--copy-paste <x>,<y>` (a click there, then
 /// ⌘C and ⌘V), `--select-text <words>` (those words selected
-/// in the first editor holding them, so the format bar shows). Every flag takes a value, because AppKit
+/// in the first editor holding them, so the format bar shows),
+/// `--update-feed <url>` and `--update-check now|install` (revision 68:
+/// another feed, checked at once on any build). Every flag takes a value, because AppKit
 /// reads `-key value` pairs off the command line as defaults overrides and
 /// a bare flag shifts every pair after it — the window never opened until
 /// that was found.

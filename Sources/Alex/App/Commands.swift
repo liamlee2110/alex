@@ -8,6 +8,8 @@ struct AboutCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Alex") { openWindow(id: "about") }
+            // Revision 68: where a Mac app keeps it, under About.
+            Button("Check for updates…") { Updater.shared.check() }
         }
     }
 }
